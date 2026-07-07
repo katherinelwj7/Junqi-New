@@ -262,6 +262,7 @@ public class Board {
 
         connectDownRight(1, 0, ConnectionType.ROAD);
         connectDown(1, 1, ConnectionType.ROAD);
+        connectDown(1, 2, ConnectionType.ROAD);
         connectDownLeft(1, 2, ConnectionType.ROAD);
         connectDownRight(1, 2, ConnectionType.ROAD);
         connectDown(1, 3, ConnectionType.ROAD);

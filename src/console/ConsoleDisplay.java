@@ -80,7 +80,7 @@ public class ConsoleDisplay {
                 "MINE must be placed in the last two rows; \n" +
                 "FLAG must be placed in one of the two BASEs on the back row (the square frames at (0,1), (0,3), (11,1), (11,3)), while the other BASE holds any piece acting as a decoy flag. \n" +
                 "\n" +
-                "Apart from these restrictions, players may customize their setup before the game starts, but MINE and FLAG cannot be moved once their starting positions are set. \n" +
+                "Apart from these restrictions, players may customize their setup before the game starts. After the game begins, MINE and FLAG cannot move. \n" +
                 "\n" +
                 "Pieces that have entered BASE cannot move. If the opponent captures a piece inside your BASE, the enemy piece that entered BASE also becomes immobile.\n" +
                 "\n" +
