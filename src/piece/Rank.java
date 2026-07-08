@@ -104,6 +104,13 @@ public enum Rank {
         switch(this) {
 
             case ENGINEER:
+            case NEW_RECRUIT:
+                return Rank.PRIVATE;
+
+            case PRIVATE:
+                return Rank.SQUAD;
+
+            case SQUAD:
                 return Rank.PLATOON;
 
             case PLATOON:

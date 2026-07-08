@@ -19,6 +19,7 @@ public class Game {
     private int setupHighlightRow = -1;
     private int setupHighlightCol = -1;
     private String setupHighlightMessage = "";
+    private String lastMessage = "";
 
     public Game() {
         board = new Board(12, 5);
@@ -200,8 +201,11 @@ public class Game {
     // 开局前：布局
     public boolean placePiece(int r, int c, Piece piece) {
 
+        clearLastMessage();
+
         if (state != GameState.SETUP) {
-            System.out.println("Cannot place pieces after game starts");
+            addMessage("Cannot place pieces after game starts");
+            //System.out.println("Cannot place pieces after game starts");
             return false;
         }
 
@@ -214,7 +218,8 @@ public class Game {
 
         // 不能放到对方阵地
         if (!isOwnTerritory(piece.team, r)) {
-            System.out.println("Cannot place piece in opponent territory");
+            addMessage("Cannot place piece in opponent territory");
+            //System.out.println("Cannot place piece in opponent territory");
             return false;
         }
 
@@ -222,7 +227,8 @@ public class Game {
 
         // 开局不能放行营
         if (tile.type == TileType.CAMP) {
-            System.out.println("Cannot place piece in CAMP during setup");
+            addMessage("Cannot place piece in CAMP during setup");
+            //System.out.println("Cannot place piece in CAMP during setup");
             return false;
         }
 
@@ -245,7 +251,8 @@ public class Game {
     // 默认布局
     public void setupDefaultLayout() {
         if (state != GameState.SETUP) {
-            System.out.println("Can only set default layout during SETUP");
+            addMessage("Can only set default layout during SETUP");
+            //System.out.println("Can only set default layout during SETUP");
             return;
         }
 
@@ -319,8 +326,11 @@ public class Game {
     // 布局时交换两个棋子的位置
     public boolean swapSetupPieces(Team setupPlayer, int r1, int c1, int r2, int c2) {
 
+        clearLastMessage();
+
         if (state != GameState.SETUP) {
-            System.out.println("Can only swap pieces during SETUP");
+            addMessage("Can only swap pieces during SETUP");
+            //System.out.println("Can only swap pieces during SETUP");
             return false;
         }
 
@@ -328,19 +338,22 @@ public class Game {
         Piece p2 = board.getPiece(r2, c2);
 
         if (p1 == null || p2 == null) {
-            System.out.println("Both squares must contain pieces");
+            addMessage("Both squares must contain pieces");
+            //System.out.println("Both squares must contain pieces");
             return false;
         }
 
         if (p1.team != setupPlayer || p2.team != setupPlayer) {
-            System.out.println("You can only swap your own pieces during SETUP");
+            addMessage("You can only swap your own pieces during SETUP");
+            //System.out.println("You can only swap your own pieces during SETUP");
             return false;
         }
 
         if (!isSetupSquare(p1.team, r1, c1) ||
                 !isSetupSquare(p1.team, r2, c2)) {
 
-            System.out.println("Can only swap within your own setup area, and not in camps");
+            addMessage("Can only swap within your own setup area, and not in camps");
+            //System.out.println("Can only swap within your own setup area, and not in camps");
             return false;
         }
 
@@ -406,25 +419,31 @@ public class Game {
     private String getSetupRestrictionMessage(Piece piece, int targetRow, int targetCol) {
 
         if (piece == null) {
+            addMessage("No piece selected");
             return "No piece selected";
         }
 
         if (!isSetupSquare(piece.team, targetRow, targetCol)) {
+            addMessage(piece.rank + " cannot be placed outside setup area or in CAMP");
             return piece.rank + " cannot be placed outside setup area or in CAMP";
         }
 
         if (piece.rank == Rank.FLAG) {
+            addMessage("FLAG must be placed in BASE");
             return "FLAG must be placed in BASE";
         }
 
         if (piece.rank == Rank.MINE) {
+            addMessage("MINE can only be placed in the back two rows");
             return "MINE can only be placed in the back two rows";
         }
 
         if (piece.rank == Rank.BOMB) {
+            addMessage("BOMB cannot be placed in the first row");
             return "BOMB cannot be placed in the first row";
         }
 
+        addMessage("Illegal setup position");
         return "Illegal setup position";
     }
 
@@ -557,13 +576,18 @@ public class Game {
 
     // 开始游戏
     public boolean startGame() {
+
+        clearLastMessage();
+
         if (state != GameState.SETUP) {
-            System.out.println("Game can only start immediately after SETUP");
+            addMessage("Game can only start immediately after SETUP");
+            //System.out.println("Game can only start immediately after SETUP");
             return false;
         }
 
         if (!isValidSetup(Team.RED) || !isValidSetup(Team.BLUE)) {
-            System.out.println("Cannot start: invalid setup");
+            addMessage("Cannot start: invalid setup");
+            //System.out.println("Cannot start: invalid setup");
             return false;
         }
 
@@ -585,7 +609,8 @@ public class Game {
     // 开始游戏的测试helper（不需要完整布局）
     public boolean startGameForTesting() {
         if (state != GameState.SETUP) {
-            System.out.println("Game can only start immediately after SETUP");
+            addMessage("Game can only start immediately after SETUP");
+            //System.out.println("Game can only start immediately after SETUP");
             return false;
         }
 
@@ -612,8 +637,11 @@ public class Game {
     // 移动
     public boolean move(int r1, int c1, int r2, int c2) {
 
+        clearLastMessage();
+
         if (state != GameState.PLAYING) {
-            System.out.println("Cannot move unless game is PLAYING");
+            addMessage("Cannot move unless game is PLAYING");
+            //System.out.println("Cannot move unless game is PLAYING");
             return false;
         }
 
@@ -621,24 +649,28 @@ public class Game {
         Piece defender = board.getPiece(r2, c2);
 
         if (attacker == null)  {
-            System.out.println("Invalid move：no piece");
+            addMessage("Invalid move：no piece");
+            //System.out.println("Invalid move：no piece");
             return false;
         }
 
         if (attacker.team != currentTurn) {
-            System.out.println("It is not this team's turn");
+            addMessage("It is not this team's turn");
+            //System.out.println("It is not this team's turn");
             return false;
         }
 
         Team attackerTeam = attacker.team;
 
         if (!attacker.movable) {
-            System.out.println("Invalid move: piece cannot move");
+            addMessage("Invalid move: piece cannot move");
+            //System.out.println("Invalid move: piece cannot move");
             return false;
         }
 
         if (!MoveValidator.canMove(board, attacker, r1, c1, r2, c2)) {
-            System.out.println("Invalid move: illegal movement");
+            addMessage("Invalid move: illegal movement");
+            //System.out.println("Invalid move: illegal movement");
             return false;
         }
 
@@ -647,7 +679,8 @@ public class Game {
                 attacker.team == defender.team) {
 
             if (!MoveValidator.canMerge(attacker, defender)) {
-                System.out.println("Invalid move: same team");
+                addMessage("Invalid move: same team");
+                //System.out.println("Invalid move: same team");
                 return false;
             }
 
@@ -699,7 +732,8 @@ public class Game {
                       int r2, int c2) {
 
         if (state != GameState.PLAYING) {
-            System.out.println("Cannot merge unless game is PLAYING");
+            addMessage("Cannot merge unless game is PLAYING");
+            //System.out.println("Cannot merge unless game is PLAYING");
             return;
         }
 
@@ -720,20 +754,25 @@ public class Game {
     public boolean split(int r1, int c1,
                          int r2, int c2) {
 
+        clearLastMessage();
+
         if (state != GameState.PLAYING) {
-            System.out.println("Cannot split unless game is PLAYING");
+            addMessage("Cannot split unless game is PLAYING");
+            //System.out.println("Cannot split unless game is PLAYING");
             return false;
         }
 
         Piece piece = board.getPiece(r1, c1);
 
         if (piece == null) {
-            System.out.println("No piece to split");
+            addMessage("No piece to split");
+            //System.out.println("No piece to split");
             return false;
         }
 
         if (piece.team != currentTurn) {
-            System.out.println("It is not this team's turn");
+            addMessage("It is not this team's turn");
+            //System.out.println("It is not this team's turn");
             return false;
         }
 
@@ -743,7 +782,8 @@ public class Game {
         // 能不能 split
         if (!MoveValidator.canSplit(piece)) {
 
-            System.out.println("Cannot split");
+            addMessage("Cannot split");
+            //System.out.println("Cannot split");
             return false;
         }
 
@@ -751,7 +791,8 @@ public class Game {
         if (piece.rank == Rank.PRIVATE) {
             if (!isOwnTerritory(piece.team, r1) || !isOwnTerritory(piece.team, r2)) {
 
-                System.out.println("PRIVATE can only split within own territory");
+                addMessage("PRIVATE can only split within own territory");
+                //System.out.println("PRIVATE can only split within own territory");
                 return false;
             }
         }
@@ -779,7 +820,8 @@ public class Game {
                 r2, c2, allowOccupiedCamp) ||
         !MoveValidator.isOneStep(r1, c1, r2, c2)) {
 
-            System.out.println("Invalid split move");
+            addMessage("Invalid split move");
+            //System.out.println("Invalid split move");
             return false;
         }
 
@@ -797,7 +839,8 @@ public class Game {
         // 目标是己方：尝试分裂后融合
         if (defender.team == piece.team) {
             if (!MoveValidator.canMerge(movingHalf, defender)) {
-                System.out.println("Cannot split onto teammate unless they can merge");
+                addMessage("Cannot split onto teammate unless they can merge");
+                //System.out.println("Cannot split onto teammate unless they can merge");
                 return false;
             }
 
@@ -841,8 +884,8 @@ public class Game {
 
             flag.reveal();
 
-            System.out.println(
-                    team + " flag revealed!");
+            addMessage(team + " flag revealed!");
+            //System.out.println(team + " flag revealed!");
         }
     }
 
@@ -911,7 +954,8 @@ public class Game {
     // 和棋
     public boolean agreeDraw() {
         if (state != GameState.PLAYING) {
-            System.out.println("Can only negotiate draw during PLAYING");
+            addMessage("Can only negotiate draw during PLAYING");
+            //System.out.println("Can only negotiate draw during PLAYING");
             return false;
         }
 
@@ -938,7 +982,8 @@ public class Game {
     // 结束游戏
     public boolean finishGame() {
         if (state == GameState.FINISHED) {
-            System.out.println("Game already finished");
+            addMessage("Game already finished");
+            //System.out.println("Game already finished");
             return false;
         }
 
@@ -961,5 +1006,25 @@ public class Game {
         draw = true;
         finishGame();
         System.out.println("Game ends in a draw");
+    }
+
+    // 处理给玩家的提示
+    public String getLastMessage() {
+        return lastMessage;
+    }
+
+    private void clearLastMessage() {
+        lastMessage = "";
+    }
+
+    private void addMessage(String message) {
+
+        if (lastMessage.isEmpty()) {
+            lastMessage = message;
+        } else {
+            lastMessage += "\n" + message;
+        }
+
+        System.out.println(message);
     }
 }

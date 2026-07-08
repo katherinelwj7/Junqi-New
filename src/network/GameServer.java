@@ -23,11 +23,47 @@ public class GameServer {
     private Game game;
     private final List<ClientHandler> clients;
 
+    private boolean redReady = false;
+    private boolean blueReady = false;
+
+    private boolean redNewGameReady = false;
+    private boolean blueNewGameReady = false;
+
     public GameServer(int port) {
         this.port = port;
         this.game = new Game();
         this.game.setupDefaultLayout();
         this.clients = new ArrayList<>();
+    }
+
+    private void setReady(Team team, boolean ready) {
+        if (team == Team.RED) {
+            redReady = ready;
+        } else if (team == Team.BLUE) {
+            blueReady = ready;
+        }
+    }
+
+    private void setNewGameReady(Team team, boolean ready) {
+        if (team == Team.RED) {
+            redNewGameReady = ready;
+        } else if (team == Team.BLUE) {
+            blueNewGameReady = ready;
+        }
+    }
+
+    private boolean bothPlayersWantNewGame() {
+        return redNewGameReady && blueNewGameReady;
+    }
+
+    private boolean bothPlayersReady() {
+        return redReady && blueReady;
+    }
+
+    private String getReadyMessage(ClientHandler client) {
+        Team otherTeam = client.team == Team.RED ? Team.BLUE : Team.RED;
+
+        return client.team + " is ready. Waiting for " + otherTeam + ".";
     }
 
     public void start() {
@@ -84,21 +120,73 @@ public class GameServer {
 
         if (command.equals("START")) {
 
+            if (game.getState() != GameState.SETUP) {
+                sendMessageToClient(client, "Game cannot be started now.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            setReady(client.team, true);
+
+            if (clients.size() < 2) {
+                sendMessageToClient(client, "Ready. Waiting for another player to connect.");
+                broadcastUpdates();
+                return;
+            }
+
+            if (!bothPlayersReady()) {
+                sendMessageToClient(client, getReadyMessage(client));
+                broadcastUpdates();
+                return;
+            }
+
             boolean success = game.startGame();
 
             if (success) {
-                broadcastBoards("Game started.");
+                broadcastMessage("Both players are ready. Game started.");
+                broadcastUpdates();
             } else {
-                sendBoardToClient(client, "Could not start game.");
+                sendMessageToClient(client, getGameMessageOr("Could not start game."));
+                sendUpdateToClient(client);
             }
 
             return;
         }
 
         if (command.equals("NEW_GAME")) {
+
+            if (game.getState() != GameState.FINISHED) {
+                sendMessageToClient(client, "New game is only available after the game finishes.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            setNewGameReady(client.team, true);
+
+            if (!bothPlayersWantNewGame()) {
+                sendMessageToClient(client, "New game request sent. Waiting for opponent.");
+                sendUpdateToClient(client);
+
+                ClientHandler opponent = findOpponent(client);
+
+                if (opponent != null) {
+                    sendMessageToClient(opponent, client.team + " wants a new game.");
+                    sendUpdateToClient(opponent);
+                }
+
+                return;
+            }
+
             game = new Game();
             game.setupDefaultLayout();
-            broadcastBoards("New game created.");
+
+            redReady = false;
+            blueReady = false;
+            redNewGameReady = false;
+            blueNewGameReady = false;
+
+            broadcastMessage("Both players agreed. New game created.");
+            broadcastUpdates();
             return;
         }
 
@@ -117,9 +205,11 @@ public class GameServer {
             boolean success = game.swapSetupPieces(client.team, r1, c1, r2, c2);
 
             if (success) {
-                broadcastBoards(client.team + " swapped two setup pieces.");
+                sendMessageToClient(client, getGameMessageOr("Swap succeeded."));
+                broadcastUpdates();
             } else {
-                sendBoardToClient(client, "Swap failed.");
+                sendMessageToClient(client, getGameMessageOr("Swap failed."));
+                sendUpdateToClient(client);
             }
 
             return;
@@ -150,9 +240,11 @@ public class GameServer {
             boolean success = game.move(r1, c1, r2, c2);
 
             if (success) {
-                broadcastBoards(client.team + " moved.");
+                sendMessageToClient(client, getGameMessageOr("Move succeeded."));
+                broadcastUpdates();
             } else {
-                sendBoardToClient(client, "Move failed.");
+                sendMessageToClient(client, getGameMessageOr("Move failed."));
+                sendUpdateToClient(client);
             }
 
             return;
@@ -183,9 +275,11 @@ public class GameServer {
             boolean success = game.split(r1, c1, r2, c2);
 
             if (success) {
-                broadcastBoards(client.team + " split a piece.");
+                sendMessageToClient(client, getGameMessageOr("Split succeeded."));
+                broadcastUpdates();
             } else {
-                sendBoardToClient(client, "Split failed.");
+                sendMessageToClient(client, getGameMessageOr("Split failed."));
+                sendUpdateToClient(client);
             }
 
             return;
@@ -193,6 +287,73 @@ public class GameServer {
 
         sendBoardToClient(client, "Unknown command: " + command);
     }
+
+    private ClientHandler findOpponent(ClientHandler client) {
+
+        for (ClientHandler other : clients) {
+            if (other != client) {
+                return other;
+            }
+        }
+
+        return null;
+    }
+
+    private void sendMessageToClient(ClientHandler client, String message) {
+        client.sendLine("MESSAGE " + message);
+    }
+
+    private void broadcastMessage(String message) {
+        for (ClientHandler client : clients) {
+            sendMessageToClient(client, message);
+        }
+    }
+
+    private synchronized void broadcastUpdates() {
+        for (ClientHandler client : clients) {
+            sendUpdateToClient(client);
+        }
+    }
+
+    private void sendUpdateToClient(ClientHandler client) {
+
+        client.sendLine(createStateLine());
+
+        client.sendLine("BOARD");
+
+        for (int r = 0; r < ROWS; r++) {
+
+            StringBuilder row = new StringBuilder();
+
+            for (int c = 0; c < COLS; c++) {
+
+                String display = game.getPieceDisplayAt(r, c, client.team);
+
+                if (c > 0) {
+                    row.append("|");
+                }
+
+                row.append(display);
+            }
+
+            client.sendLine(row.toString());
+        }
+
+        client.sendLine("END_BOARD");
+    }
+
+    private String getGameMessageOr(String defaultMessage) {
+
+        String message = game.getLastMessage();
+
+        if (message == null || message.isEmpty()) {
+            return defaultMessage;
+        }
+
+        return message;
+    }
+
+
 
     private synchronized void broadcastBoards(String message) {
         for (ClientHandler client : clients) {
@@ -245,7 +406,9 @@ public class GameServer {
                 game.getState() + " " +
                 currentTurnText + " " +
                 winnerText + " " +
-                game.isDraw();
+                game.isDraw() + " " +
+                redReady + " " +
+                blueReady;
     }
 
     private class ClientHandler implements Runnable {

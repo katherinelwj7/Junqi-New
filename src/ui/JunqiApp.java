@@ -73,6 +73,19 @@ public class JunqiApp extends Application {
     private Button viewRedButton;
     private Button viewBlueButton;
 
+    private boolean networkRedReady = false;
+    private boolean networkBlueReady = false;
+
+    private int pendingFromRow = -1;
+    private int pendingFromCol = -1;
+    private int pendingToRow = -1;
+    private int pendingToCol = -1;
+
+    private int errorFromRow = -1;
+    private int errorFromCol = -1;
+    private int errorToRow = -1;
+    private int errorToCol = -1;
+
     @Override
     public void start(Stage stage) {
 
@@ -131,6 +144,49 @@ public class JunqiApp extends Application {
         stage.show();
     }
 
+    private void clearSelection() {
+        selectedRow = -1;
+        selectedCol = -1;
+    }
+
+    private void rememberPendingAction(int fromRow, int fromCol, int toRow, int toCol) {
+        pendingFromRow = fromRow;
+        pendingFromCol = fromCol;
+        pendingToRow = toRow;
+        pendingToCol = toCol;
+    }
+
+    private void clearPendingAction() {
+        pendingFromRow = -1;
+        pendingFromCol = -1;
+        pendingToRow = -1;
+        pendingToCol = -1;
+    }
+
+    private void markPendingActionAsError() {
+
+        if (pendingFromRow == -1) {
+            return;
+        }
+
+        errorFromRow = pendingFromRow;
+        errorFromCol = pendingFromCol;
+        errorToRow = pendingToRow;
+        errorToCol = pendingToCol;
+    }
+
+    private void clearErrorHighlight() {
+        errorFromRow = -1;
+        errorFromCol = -1;
+        errorToRow = -1;
+        errorToCol = -1;
+    }
+
+    private boolean isErrorCell(int row, int col) {
+        return (row == errorFromRow && col == errorFromCol)
+                || (row == errorToRow && col == errorToCol);
+    }
+
     private void initializeNetworkBoard() {
 
         for (int r = 0; r < 12; r++) {
@@ -138,6 +194,27 @@ public class JunqiApp extends Application {
                 networkBoard[r][c] = ".";
             }
         }
+    }
+
+    private boolean isErrorMessage(String message) {
+
+        if (message == null) {
+            return true;
+        }
+
+        String lower = message.toLowerCase();
+
+        return lower.contains("failed")
+                || lower.contains("could not")
+                || lower.contains("cannot")
+                || lower.contains("can't")
+                || lower.contains("invalid")
+                || lower.contains("not your turn")
+                || lower.contains("not allowed")
+                || lower.contains("can only")
+                || lower.contains("must")
+                || lower.contains("no movable")
+                || lower.contains("game is finished");
     }
 
     private void showMessage(String message, boolean success) {
@@ -310,16 +387,14 @@ public class JunqiApp extends Application {
 
         viewRedButton.setOnAction(e -> {
             localViewer = Team.RED;
-            selectedRow = -1;
-            selectedCol = -1;
+            clearSelection();
             refreshBoard();
             updateStatus();
         });
 
         viewBlueButton.setOnAction(e -> {
             localViewer = Team.BLUE;
-            selectedRow = -1;
-            selectedCol = -1;
+            clearSelection();
             refreshBoard();
             updateStatus();
         });
@@ -331,9 +406,11 @@ public class JunqiApp extends Application {
                 if (networkState == GameState.FINISHED) {
                     networkClient.sendNewGame();
                     showMessage("New game request sent.", true);
-                } else {
+                } else if (networkState == GameState.SETUP){
                     networkClient.sendStart();
-                    showMessage("Start request sent.", true);
+                    showMessage("Ready request sent.", true);
+                } else {
+                    showMessage("Game has already started.", false);
                 }
 
                 return;
@@ -359,8 +436,7 @@ public class JunqiApp extends Application {
 
         moveModeButton.setOnAction(e -> {
             actionMode = ActionMode.MOVE;
-            selectedRow = -1;
-            selectedCol = -1;
+            clearSelection();
             modeLabel.setText("Mode: MOVE");
             statusLabel.setText("Move mode selected.");
             refreshBoard();
@@ -368,16 +444,14 @@ public class JunqiApp extends Application {
 
         splitModeButton.setOnAction(e -> {
             actionMode = ActionMode.SPLIT;
-            selectedRow = -1;
-            selectedCol = -1;
+            clearSelection();
             modeLabel.setText("Mode: SPLIT");
             statusLabel.setText("Split mode selected.");
             refreshBoard();
         });
 
         clearSelectionButton.setOnAction(e -> {
-            selectedRow = -1;
-            selectedCol = -1;
+            clearSelection();
             statusLabel.setText("Selection cleared.");
             refreshBoard();
         });
@@ -435,12 +509,14 @@ public class JunqiApp extends Application {
             }
 
             @Override
-            public void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw) {
+            public void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw, boolean redReady, boolean blueReady) {
                 Platform.runLater(() -> {
                     networkState = state;
                     networkCurrentTurn = currentTurn;
                     networkWinner = winner;
                     networkDraw = draw;
+                    networkRedReady = redReady;
+                    networkBlueReady = blueReady;
 
                     updateStatus();
                     updateStartButton();
@@ -450,12 +526,17 @@ public class JunqiApp extends Application {
             @Override
             public void onMessage(String message) {
                 Platform.runLater(() -> {
-                    boolean success = !message.toLowerCase().contains("failed")
-                            && !message.toLowerCase().contains("could not")
-                            && !message.toLowerCase().contains("invalid")
-                            && !message.toLowerCase().contains("not your turn");
+
+                    boolean success = !isErrorMessage(message);
+
+                    if (success) {
+                        clearErrorHighlight();
+                    } else {
+                        markPendingActionAsError();
+                    }
 
                     showMessage(message, success);
+                    refreshBoard();
                 });
             }
 
@@ -498,11 +579,23 @@ public class JunqiApp extends Application {
         }
 
         if (state == GameState.SETUP) {
-            startButton.setText("Start Game");
+            startButton.setText("Ready");
             startButton.setDisable(false);
+
+            if (networkMode) {
+                if (localViewer == Team.RED && networkRedReady) {
+                    startButton.setText("Ready - Waiting");
+                    startButton.setDisable(true);
+                } else if (localViewer == Team.BLUE && networkBlueReady) {
+                    startButton.setText("Ready - Waiting");
+                    startButton.setDisable(true);
+                }
+            }
+
         } else if (state == GameState.PLAYING) {
             startButton.setText("Game Started");
             startButton.setDisable(true);
+
         } else {
             startButton.setText("New Game");
             startButton.setDisable(false);
@@ -517,8 +610,7 @@ public class JunqiApp extends Application {
         localViewer = Team.RED;
         actionMode = ActionMode.MOVE;
 
-        selectedRow = -1;
-        selectedCol = -1;
+        clearSelection();
 
         showMessage("New game created.", true);
 
@@ -526,19 +618,24 @@ public class JunqiApp extends Application {
         updateStatus();
     }
 
-    private void handleCellClick(int row, int col) {
+    private void handleCellClick(int viewRow, int viewCol) {
+
+        int row = toModelRow(viewRow);
+        int col = toModelCol(viewCol);
 
         if (selectedRow == -1) {
             selectedRow = row;
             selectedCol = col;
 
-            statusLabel.setText("Selected: (" + row + ", " + col + ")");
+            showMessage("Selected: (" + row + ", " + col + ")", true);
             refreshBoard();
             return;
         }
 
         int fromRow = selectedRow;
         int fromCol = selectedCol;
+
+        clearSelection();
 
         if (networkMode) {
             handleNetworkAction(fromRow, fromCol, row, col);
@@ -547,17 +644,14 @@ public class JunqiApp extends Application {
             return;
         }
 
-        selectedRow = -1;
-        selectedCol = -1;
-
         if (game.getState() == GameState.SETUP) {
 
             boolean success = game.swapSetupPieces(localViewer, fromRow, fromCol, row, col);
 
             if (success) {
-                showMessage("Swap succeeded.", true);
+                showMessage(getLocalGameMessageOr("Swap succeeded."), true);
             } else {
-                showMessage("Swap failed.", false);
+                showMessage(getLocalGameMessageOr("Swap failed."), false);
             }
 
         } else if (game.getState() == GameState.PLAYING) {
@@ -568,18 +662,18 @@ public class JunqiApp extends Application {
                 success = game.move(fromRow, fromCol, row, col);
 
                 if (success) {
-                    showMessage("Move succeeded. Current turn: " + game.getCurrentTurn(), true);
+                    showMessage(getLocalGameMessageOr("Move succeeded. Current turn: " + game.getCurrentTurn()), true);
                 } else {
-                    showMessage("Move failed. Current turn: " + game.getCurrentTurn(), false);
+                    showMessage(getLocalGameMessageOr("Move failed. Current turn: " + game.getCurrentTurn()), false);
                 }
 
             } else {
                 success = game.split(fromRow, fromCol, row, col);
 
                 if (success) {
-                    showMessage("Split succeeded. Current turn: " + game.getCurrentTurn(), true);
+                    showMessage(getLocalGameMessageOr("Split succeeded. Current turn: " + game.getCurrentTurn()), true);
                 } else {
-                    showMessage("Split failed. Current turn: " + game.getCurrentTurn(), false);
+                    showMessage(getLocalGameMessageOr("Split failed. Current turn: " + game.getCurrentTurn()), false);
                 }
             }
 
@@ -591,10 +685,28 @@ public class JunqiApp extends Application {
         updateStatus();
     }
 
+    private String getLocalGameMessageOr(String defaultMessage) {
+
+        String message = game.getLastMessage();
+
+        if (message == null || message.isEmpty()) {
+            return defaultMessage;
+        }
+
+        return message;
+    }
+
     private void handleNetworkAction(int fromRow, int fromCol, int toRow, int toCol) {
+
+        clearSelection();
+
+        rememberPendingAction(fromRow, fromCol, toRow, toCol);
+        clearErrorHighlight();
 
         if (networkClient == null) {
             showMessage("Not connected to server.", false);
+            markPendingActionAsError();
+            refreshBoard();
             return;
         }
 
@@ -623,6 +735,22 @@ public class JunqiApp extends Application {
         }
 
         showMessage("Game is finished.", false);
+    }
+
+    private int toModelRow(int viewRow) {
+        if (localViewer == Team.BLUE) {
+            return 11 - viewRow;
+        }
+
+        return viewRow;
+    }
+
+    private int toModelCol(int viewCol) {
+        if (localViewer == Team.BLUE) {
+            return 4 - viewCol;
+        }
+
+        return viewCol;
     }
 
     private String getLegendText() {
@@ -746,27 +874,39 @@ public class JunqiApp extends Application {
 
     private void refreshBoard() {
 
-        for (int r = 0; r < 12; r++) {
-            for (int c = 0; c < 5; c++) {
+        for (int viewR = 0; viewR < 12; viewR++) {
+            for (int viewC = 0; viewC < 5; viewC++) {
+
+                int modelR = toModelRow(viewR);
+                int modelC = toModelCol(viewC);
 
                 String display;
 
                 if (networkMode) {
-                    display = networkBoard[r][c];
+                    display = networkBoard[modelR][modelC];
+
+                    if (display == null) {
+                        display = ".";
+                    }
+
                 } else {
-                    display = game.getPieceDisplayAt(r, c, localViewer);
+                    display = game.getPieceDisplayAt(modelR, modelC, localViewer);
                 }
 
-                cellButtons[r][c].setText(getButtonText(display));
+                cellButtons[viewR][viewC].setText(getButtonText(display));
 
-                String style = getCellBaseStyle(r, c) + getPieceStyle(r, c, display);
+                String style = getCellBaseStyle(modelR, modelC)
+                        + getPieceStyle(modelR, modelC, display);
 
-                if (r == selectedRow && c == selectedCol) {
+                if (isErrorCell(modelR, modelC)) {
+                    style += "-fx-border-color: #D62828;" +
+                            "-fx-border-width: 4;";
+                } else if (modelR == selectedRow && modelC == selectedCol) {
                     style += "-fx-border-color: black;" +
                             "-fx-border-width: 3;";
                 }
 
-                cellButtons[r][c].setStyle(style);
+                cellButtons[viewR][viewC].setStyle(style);
             }
         }
     }
@@ -776,7 +916,9 @@ public class JunqiApp extends Application {
         if (networkMode) {
 
             if (networkState == GameState.SETUP) {
-                statusLabel.setText("Network Setup. You are: " + localViewer);
+                statusLabel.setText("Network Setup. You are: " + localViewer
+                + ". RED ready: " + networkRedReady
+                        + ". BLUE ready: " + networkBlueReady);
             } else if (networkState == GameState.PLAYING) {
                 statusLabel.setText("Network Game. Current turn: " + networkCurrentTurn
                         + ". You are: " + localViewer

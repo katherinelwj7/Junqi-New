@@ -23,7 +23,7 @@ public class GameClient {
     public interface Listener {
         void onTeamAssigned(Team team);
 
-        void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw);
+        void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw, boolean redReady, boolean blueReady);
 
         void onMessage(String message);
 
@@ -100,7 +100,15 @@ public class GameClient {
 
         boolean draw = Boolean.parseBoolean(parts[4]);
 
-        listener.onStateUpdated(state, currentTurn, winner, draw);
+        boolean redReady = false;
+        boolean blueReady = false;
+
+        if (parts.length >= 7) {
+            redReady = Boolean.parseBoolean(parts[5]);
+            blueReady = Boolean.parseBoolean(parts[6]);
+        }
+
+        listener.onStateUpdated(state, currentTurn, winner, draw, redReady, blueReady);
     }
 
     private void handleBoardBlock() throws IOException {

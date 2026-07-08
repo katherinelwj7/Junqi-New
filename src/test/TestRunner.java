@@ -26,6 +26,7 @@ public class TestRunner {
         testEngineerTurnsOnRailway();
         testRoadBlockedEngineerFailsTurning();
         testMergeSuccess();
+        testMergeRanks();
         testMergeDifferentRankFails();
         testSameRankDifferentTeamBattlesNotMerge();
         testMergeBrigadeFails();
@@ -245,6 +246,96 @@ public class TestRunner {
         assertNull(game.getBoard().getPiece(0, 0), "Original square should be empty");
 
         pass("Merge success");
+    }
+
+    private static void testMergeRanks() {
+        Game game = new Game();
+
+        game.forcePlacePieceForTesting(0, 0,
+                new Piece(Rank.ENGINEER, Team.BLUE));
+        game.forcePlacePieceForTesting(1, 0,
+                new Piece(Rank.ENGINEER, Team.BLUE));
+
+        game.forcePlacePieceForTesting(2, 0,
+                new Piece(Rank.NEW_RECRUIT, Team.BLUE));
+        game.forcePlacePieceForTesting(3, 0,
+                new Piece(Rank.NEW_RECRUIT, Team.BLUE));
+
+        game.forcePlacePieceForTesting(4, 0,
+                new Piece(Rank.PRIVATE, Team.BLUE));
+        game.forcePlacePieceForTesting(5, 0,
+                new Piece(Rank.PRIVATE, Team.BLUE));
+
+        game.forcePlacePieceForTesting(0, 4,
+                new Piece(Rank.SQUAD, Team.BLUE));
+        game.forcePlacePieceForTesting(1, 4,
+                new Piece(Rank.SQUAD, Team.BLUE));
+
+        game.forcePlacePieceForTesting(11, 0,
+                new Piece(Rank.PLATOON, Team.RED));
+        game.forcePlacePieceForTesting(10, 0,
+                new Piece(Rank.PLATOON, Team.RED));
+
+        game.forcePlacePieceForTesting(9, 0,
+                new Piece(Rank.COMPANY, Team.RED));
+        game.forcePlacePieceForTesting(8, 0,
+                new Piece(Rank.COMPANY, Team.RED));
+
+        game.forcePlacePieceForTesting(7, 0,
+                new Piece(Rank.BATTALION, Team.RED));
+        game.forcePlacePieceForTesting(6, 0,
+                new Piece(Rank.BATTALION, Team.RED));
+
+        game.forcePlacePieceForTesting(11, 4,
+                new Piece(Rank.REGIMENT, Team.RED));
+        game.forcePlacePieceForTesting(10, 4,
+                new Piece(Rank.REGIMENT, Team.RED));
+
+        game.startGameForTesting();
+        game.setCurrentTurnForTesting(Team.BLUE);
+
+        boolean success = game.move(0, 0, 1, 0);
+
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 1, 0, Rank.PRIVATE, Team.BLUE);
+        assertNull(game.getBoard().getPiece(0, 0), "Original square should be empty");
+
+        success = game.move(11, 0, 10, 0);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 10, 0, Rank.COMPANY, Team.RED);
+        assertNull(game.getBoard().getPiece(11, 0), "Original square should be empty");
+
+        success = game.move(2, 0, 3, 0);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 3, 0, Rank.PRIVATE, Team.BLUE);
+        assertNull(game.getBoard().getPiece(2, 0), "Original square should be empty");
+
+        success = game.move(9, 0, 8, 0);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 8, 0, Rank.BATTALION, Team.RED);
+        assertNull(game.getBoard().getPiece(9, 0), "Original square should be empty");
+
+        success = game.move(4, 0, 5, 0);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 5, 0, Rank.SQUAD, Team.BLUE);
+        assertNull(game.getBoard().getPiece(4, 0), "Original square should be empty");
+
+        success = game.move(7, 0, 6, 0);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 6, 0, Rank.REGIMENT, Team.RED);
+        assertNull(game.getBoard().getPiece(7, 0), "Original square should be empty");
+
+        success = game.move(0, 4, 1, 4);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 1, 4, Rank.PLATOON, Team.BLUE);
+        assertNull(game.getBoard().getPiece(0, 4), "Original square should be empty");
+
+        success = game.move(11, 4, 10, 4);
+        assertTrue(success, "Same-rank same-team merge should succeed");
+        assertPiece(game, 10, 4, Rank.BRIGADE, Team.RED);
+        assertNull(game.getBoard().getPiece(11, 4), "Original square should be empty");
+
+        pass("Merge Ranks");
     }
 
     private static void testMergeDifferentRankFails() {
