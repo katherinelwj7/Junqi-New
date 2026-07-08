@@ -18,6 +18,8 @@ import board.ConnectionType;
 import board.TileType;
 import piece.Piece;
 import piece.Team;
+import javafx.application.Platform;
+import network.GameClient;
 
 public class JunqiApp extends Application {
 
@@ -35,6 +37,7 @@ public class JunqiApp extends Application {
     private int selectedCol = -1;
 
     private Label statusLabel;
+    private Label messageLabel;
 
     private ActionMode actionMode = ActionMode.MOVE;
     private Label modeLabel;
@@ -50,11 +53,32 @@ public class JunqiApp extends Application {
 
     private static final double BOARD_PADDING = 30;
 
+    private ScrollPane sideScrollPane;
+
+    private Button startButton;
+
+
+    private static final int PORT = 5000;
+
+    private boolean networkMode = false;
+    private GameClient networkClient;
+
+    private String[][] networkBoard = new String[12][5];
+
+    private GameState networkState = GameState.SETUP;
+    private Team networkCurrentTurn = null;
+    private Team networkWinner = null;
+    private boolean networkDraw = false;
+
+    private Button viewRedButton;
+    private Button viewBlueButton;
+
     @Override
     public void start(Stage stage) {
 
         game = new Game();
         game.setupDefaultLayout();
+        initializeNetworkBoard();
 
         localViewer = Team.RED;
         cellButtons = new Button[12][5];
@@ -62,7 +86,17 @@ public class JunqiApp extends Application {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(16));
 
-        statusLabel = new Label("Setup phase. Viewer: " + localViewer);
+        statusLabel = new Label();
+        messageLabel = new Label("Welcome to Junqi.");
+
+        messageLabel.setStyle(
+                "-fx-background-color: #FFF3C4;" +
+                        "-fx-text-fill: #4A3B00;" +
+                        "-fx-font-weight: bold;" +
+                        "-fx-padding: 8;" +
+                        "-fx-border-color: #D6B656;" +
+                        "-fx-border-width: 1;"
+        );
 
         Pane boardPane = createBoardPane();
 
@@ -74,13 +108,19 @@ public class JunqiApp extends Application {
         sideScrollPane.setMinWidth(230);
         sideScrollPane.setMaxWidth(360);
 
-        root.setTop(statusLabel);
+        VBox topBox = new VBox(6);
+        topBox.getChildren().addAll(statusLabel, messageLabel);
+
+        root.setTop(topBox);
         root.setCenter(boardPane);
         root.setRight(sideScrollPane);
 
         refreshBoard();
 
         Scene scene = new Scene(root, 800, 600);
+        sideScrollPane.prefWidthProperty().bind(
+                scene.widthProperty().multiply(0.36)
+        );
         scene.widthProperty().addListener((obs, oldWidth, newWidth) -> {
             updateResponsiveStyle(root, newWidth.doubleValue());
         });
@@ -89,6 +129,40 @@ public class JunqiApp extends Application {
         stage.setScene(scene);
         updateResponsiveStyle(root, 800);
         stage.show();
+    }
+
+    private void initializeNetworkBoard() {
+
+        for (int r = 0; r < 12; r++) {
+            for (int c = 0; c < 5; c++) {
+                networkBoard[r][c] = ".";
+            }
+        }
+    }
+
+    private void showMessage(String message, boolean success) {
+
+        messageLabel.setText(message);
+
+        if (success) {
+            messageLabel.setStyle(
+                    "-fx-background-color: #DFF3DD;" +
+                            "-fx-text-fill: #235423;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-padding: 8;" +
+                            "-fx-border-color: #7EB77A;" +
+                            "-fx-border-width: 1;"
+            );
+        } else {
+            messageLabel.setStyle(
+                    "-fx-background-color: #F8D7DA;" +
+                            "-fx-text-fill: #842029;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-padding: 8;" +
+                            "-fx-border-color: #D28A92;" +
+                            "-fx-border-width: 1;"
+            );
+        }
     }
 
     private void updateResponsiveStyle(BorderPane root, double width) {
@@ -216,9 +290,9 @@ public class JunqiApp extends Application {
         VBox sidePanel = new VBox(10);
         sidePanel.setPadding(new Insets(10));
 
-        Button viewRedButton = new Button("View RED");
-        Button viewBlueButton = new Button("View BLUE");
-        Button startButton = new Button("Start Game");
+        viewRedButton = new Button("View RED");
+        viewBlueButton = new Button("View BLUE");
+        startButton = new Button("Start Game");
 
         modeLabel = new Label("Mode: MOVE");
 
@@ -251,16 +325,36 @@ public class JunqiApp extends Application {
         });
 
         startButton.setOnAction(e -> {
+
+            if (networkMode) {
+
+                if (networkState == GameState.FINISHED) {
+                    networkClient.sendNewGame();
+                    showMessage("New game request sent.", true);
+                } else {
+                    networkClient.sendStart();
+                    showMessage("Start request sent.", true);
+                }
+
+                return;
+            }
+
+            if (game.getState() == GameState.FINISHED) {
+                resetGame();
+                return;
+            }
+
             boolean success = game.startGame();
 
             if (success) {
-                statusLabel.setText("Game started. Current turn: " + game.getCurrentTurn());
+                showMessage("Game started.", true);
             } else {
-                statusLabel.setText("Could not start game.");
+                showMessage("Could not start game.", false);
             }
 
             refreshBoard();
             updateStatus();
+            updateStartButton();
         });
 
         moveModeButton.setOnAction(e -> {
@@ -293,9 +387,13 @@ public class JunqiApp extends Application {
         legendLabel.setWrapText(true);
         ruleLabel.setWrapText(true);
 
+        Button connectLocalhostButton = new Button("Connect Localhost");
+        connectLocalhostButton.setOnAction(e -> connectToServer("localhost"));
+
         sidePanel.getChildren().addAll(
                 viewRedButton,
                 viewBlueButton,
+                connectLocalhostButton,
                 startButton,
                 modeLabel,
                 moveModeButton,
@@ -313,6 +411,121 @@ public class JunqiApp extends Application {
         return sidePanel;
     }
 
+    private void connectToServer(String host) {
+
+        if (networkMode) {
+            showMessage("Already connected to server.", false);
+            return;
+        }
+
+        networkClient = new GameClient(new GameClient.Listener() {
+
+            @Override
+            public void onTeamAssigned(Team team) {
+                Platform.runLater(() -> {
+                    localViewer = team;
+                    networkMode = true;
+
+                    viewRedButton.setDisable(true);
+                    viewBlueButton.setDisable(true);
+
+                    showMessage("Connected as " + team + ".", true);
+                    updateStatus();
+                });
+            }
+
+            @Override
+            public void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw) {
+                Platform.runLater(() -> {
+                    networkState = state;
+                    networkCurrentTurn = currentTurn;
+                    networkWinner = winner;
+                    networkDraw = draw;
+
+                    updateStatus();
+                    updateStartButton();
+                });
+            }
+
+            @Override
+            public void onMessage(String message) {
+                Platform.runLater(() -> {
+                    boolean success = !message.toLowerCase().contains("failed")
+                            && !message.toLowerCase().contains("could not")
+                            && !message.toLowerCase().contains("invalid")
+                            && !message.toLowerCase().contains("not your turn");
+
+                    showMessage(message, success);
+                });
+            }
+
+            @Override
+            public void onBoardUpdated(String[][] board) {
+                Platform.runLater(() -> {
+                    networkBoard = board;
+                    refreshBoard();
+                });
+            }
+
+            @Override
+            public void onDisconnected() {
+                Platform.runLater(() -> {
+                    showMessage("Disconnected from server.", false);
+                });
+            }
+        });
+
+        try {
+            networkClient.connect(host, PORT);
+            showMessage("Connecting to server...", true);
+        } catch (Exception e) {
+            showMessage("Connection failed: " + e.getMessage(), false);
+        }
+    }
+
+    private void updateStartButton() {
+
+        if (startButton == null) {
+            return;
+        }
+
+        GameState state;
+
+        if (networkMode) {
+            state = networkState;
+        } else {
+            state = game.getState();
+        }
+
+        if (state == GameState.SETUP) {
+            startButton.setText("Start Game");
+            startButton.setDisable(false);
+        } else if (state == GameState.PLAYING) {
+            startButton.setText("Game Started");
+            startButton.setDisable(true);
+        } else {
+            startButton.setText("New Game");
+            startButton.setDisable(false);
+        }
+    }
+
+    private void resetGame() {
+
+        game = new Game();
+        game.setupDefaultLayout();
+
+        localViewer = Team.RED;
+        actionMode = ActionMode.MOVE;
+
+        selectedRow = -1;
+        selectedCol = -1;
+
+        showMessage("New game created.", true);
+
+        refreshBoard();
+        updateStatus();
+    }
+
     private void handleCellClick(int row, int col) {
 
         if (selectedRow == -1) {
@@ -327,6 +540,13 @@ public class JunqiApp extends Application {
         int fromRow = selectedRow;
         int fromCol = selectedCol;
 
+        if (networkMode) {
+            handleNetworkAction(fromRow, fromCol, row, col);
+            refreshBoard();
+            updateStatus();
+            return;
+        }
+
         selectedRow = -1;
         selectedCol = -1;
 
@@ -335,9 +555,9 @@ public class JunqiApp extends Application {
             boolean success = game.swapSetupPieces(localViewer, fromRow, fromCol, row, col);
 
             if (success) {
-                statusLabel.setText("Swap succeeded.");
+                showMessage("Swap succeeded.", true);
             } else {
-                statusLabel.setText("Swap failed.");
+                showMessage("Swap failed.", false);
             }
 
         } else if (game.getState() == GameState.PLAYING) {
@@ -348,18 +568,18 @@ public class JunqiApp extends Application {
                 success = game.move(fromRow, fromCol, row, col);
 
                 if (success) {
-                    statusLabel.setText("Move succeeded. Current turn: " + game.getCurrentTurn());
+                    showMessage("Move succeeded. Current turn: " + game.getCurrentTurn(), true);
                 } else {
-                    statusLabel.setText("Move failed. Current turn: " + game.getCurrentTurn());
+                    showMessage("Move failed. Current turn: " + game.getCurrentTurn(), false);
                 }
 
             } else {
                 success = game.split(fromRow, fromCol, row, col);
 
                 if (success) {
-                    statusLabel.setText("Split succeeded. Current turn: " + game.getCurrentTurn());
+                    showMessage("Split succeeded. Current turn: " + game.getCurrentTurn(), true);
                 } else {
-                    statusLabel.setText("Split failed. Current turn: " + game.getCurrentTurn());
+                    showMessage("Split failed. Current turn: " + game.getCurrentTurn(), false);
                 }
             }
 
@@ -369,6 +589,40 @@ public class JunqiApp extends Application {
 
         refreshBoard();
         updateStatus();
+    }
+
+    private void handleNetworkAction(int fromRow, int fromCol, int toRow, int toCol) {
+
+        if (networkClient == null) {
+            showMessage("Not connected to server.", false);
+            return;
+        }
+
+        if (networkState == GameState.SETUP) {
+            networkClient.sendSwap(fromRow, fromCol, toRow, toCol);
+            showMessage("Swap request sent.", true);
+            return;
+        }
+
+        if (networkState == GameState.PLAYING) {
+
+            if (networkCurrentTurn != localViewer) {
+                showMessage("It is not your turn.", false);
+                return;
+            }
+
+            if (actionMode == ActionMode.MOVE) {
+                networkClient.sendMove(fromRow, fromCol, toRow, toCol);
+                showMessage("Move request sent.", true);
+            } else {
+                networkClient.sendSplit(fromRow, fromCol, toRow, toCol);
+                showMessage("Split request sent.", true);
+            }
+
+            return;
+        }
+
+        showMessage("Game is finished.", false);
     }
 
     private String getLegendText() {
@@ -495,11 +749,17 @@ public class JunqiApp extends Application {
         for (int r = 0; r < 12; r++) {
             for (int c = 0; c < 5; c++) {
 
-                String text = game.getPieceDisplayAt(r, c, localViewer);
+                String display;
 
-                cellButtons[r][c].setText(text);
+                if (networkMode) {
+                    display = networkBoard[r][c];
+                } else {
+                    display = game.getPieceDisplayAt(r, c, localViewer);
+                }
 
-                String style = getCellBaseStyle(r, c) + getPieceTextStyle(r, c);
+                cellButtons[r][c].setText(getButtonText(display));
+
+                String style = getCellBaseStyle(r, c) + getPieceStyle(r, c, display);
 
                 if (r == selectedRow && c == selectedCol) {
                     style += "-fx-border-color: black;" +
@@ -513,20 +773,38 @@ public class JunqiApp extends Application {
 
     private void updateStatus() {
 
-        if (game.getState() == GameState.SETUP) {
-            statusLabel.setText("Setup phase. Viewer: " + localViewer);
-        } else if (game.getState() == GameState.PLAYING) {
-            statusLabel.setText("Playing. Current turn: " + game.getCurrentTurn()
-                    + ". Viewer: " + localViewer
-                    + ". Mode: " + actionMode);
+        if (networkMode) {
+
+            if (networkState == GameState.SETUP) {
+                statusLabel.setText("Network Setup. You are: " + localViewer);
+            } else if (networkState == GameState.PLAYING) {
+                statusLabel.setText("Network Game. Current turn: " + networkCurrentTurn
+                        + ". You are: " + localViewer
+                        + ". Mode: " + actionMode);
+            } else {
+                statusLabel.setText("Network Game Finished. Winner: " + networkWinner
+                        + ". Draw: " + networkDraw);
+            }
+
         } else {
-            statusLabel.setText("Game finished. Winner: " + game.getWinner()
-                    + ". Draw: " + game.isDraw());
+
+            if (game.getState() == GameState.SETUP) {
+                statusLabel.setText("Setup phase. Local viewer: " + localViewer);
+            } else if (game.getState() == GameState.PLAYING) {
+                statusLabel.setText("Playing. Current turn: " + game.getCurrentTurn()
+                        + ". Local viewer: " + localViewer
+                        + ". Mode: " + actionMode);
+            } else {
+                statusLabel.setText("Game finished. Winner: " + game.getWinner()
+                        + ". Draw: " + game.isDraw());
+            }
         }
 
         if (modeLabel != null) {
             modeLabel.setText("Mode: " + actionMode);
         }
+
+        updateStartButton();
     }
 
     private String getCellBaseStyle(int r, int c) {
@@ -549,32 +827,66 @@ public class JunqiApp extends Application {
                 "-fx-font-weight: bold;";
     }
 
-    private String getPieceTextStyle(int r, int c) {
+    private String getPieceStyle(int r, int c, String display) {
 
-        Piece piece = game.getBoard().getPiece(r, c);
-
-        if (piece == null) {
+        if (display == null || display.equals(".")) {
             return "-fx-text-fill: #333333;";
         }
 
-        String display = game.getPieceDisplayAt(r, c, localViewer);
-
-        if (display.equals("??")) {
-            return "-fx-text-fill: #555555;";
+        // 敌方未知棋子：GameServer 仍然发送 "??"
+        // UI 显示成棋子背面
+        if ("??".equals(display)) {
+            return "-fx-background-color: #6F6F6F;" +
+                    "-fx-text-fill: transparent;" +
+                    "-fx-font-weight: bold;";
         }
 
-        if (piece.team == Team.RED) {
-            return "-fx-text-fill: #B22222;";
+        // 敌方军旗被 revealed
+        if ("FL".equals(display)) {
+            return "-fx-background-color: #8A6F3E;" +
+                    "-fx-text-fill: #FFFDF7;" +
+                    "-fx-font-weight: bold;";
         }
 
-        if (piece.team == Team.BLUE) {
-            return "-fx-text-fill: #1F4E8C;";
+        Team displayTeam;
+
+        if (networkMode) {
+            displayTeam = localViewer;
+        } else {
+            if (game.getBoard().getPiece(r, c) == null) {
+                return "-fx-text-fill: #333333;";
+            }
+
+            displayTeam = game.getBoard().getPiece(r, c).team;
+        }
+
+        if (displayTeam == Team.RED) {
+            return "-fx-background-color: #C86B63;" +
+                    "-fx-text-fill: #FFFDF7;" +
+                    "-fx-font-weight: bold;";
+        }
+
+        if (displayTeam == Team.BLUE) {
+            return "-fx-background-color: #5F7FA8;" +
+                    "-fx-text-fill: #FFFDF7;" +
+                    "-fx-font-weight: bold;";
         }
 
         return "-fx-text-fill: #333333;";
     }
 
+    private String getButtonText(String display) {
 
+        if (display == null) {
+            return ".";
+        }
+
+        if ("??".equals(display)) {
+            return "";
+        }
+
+        return display;
+    }
 
     public static void main(String[] args) {
         launch(args);
