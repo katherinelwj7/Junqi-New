@@ -20,6 +20,10 @@ import piece.Piece;
 import piece.Team;
 import javafx.application.Platform;
 import network.GameClient;
+import javafx.scene.control.TextInputDialog;
+import network.GameServer;
+
+import java.util.Optional;
 
 public class JunqiApp extends Application {
 
@@ -85,6 +89,12 @@ public class JunqiApp extends Application {
     private int errorFromCol = -1;
     private int errorToRow = -1;
     private int errorToCol = -1;
+
+    private Thread hostedServerThread;
+    private GameServer hostedServer;
+
+    private Button hostGameButton;
+    private Button joinGameButton;
 
     @Override
     public void start(Stage stage) {
@@ -464,9 +474,17 @@ public class JunqiApp extends Application {
         Button connectLocalhostButton = new Button("Connect Localhost");
         connectLocalhostButton.setOnAction(e -> connectToServer("localhost"));
 
+        hostGameButton = new Button("Host Game");
+        joinGameButton = new Button("Join Game");
+
+        hostGameButton.setOnAction(e -> hostGame());
+        joinGameButton.setOnAction(e -> showJoinGameDialog());
+
         sidePanel.getChildren().addAll(
                 viewRedButton,
                 viewBlueButton,
+                hostGameButton,
+                joinGameButton,
                 connectLocalhostButton,
                 startButton,
                 modeLabel,
@@ -483,6 +501,44 @@ public class JunqiApp extends Application {
         sidePanel.setMinWidth(260);
 
         return sidePanel;
+    }
+
+    private void hostGame() {
+
+        if (networkMode) {
+            showMessage("You are already connected to a game.", false);
+            return;
+        }
+
+        if (hostedServerThread != null && hostedServerThread.isAlive()) {
+            showMessage("Server is already running. Connecting locally...", true);
+            connectToServer("localhost");
+            return;
+        }
+
+        hostedServer = new GameServer(PORT);
+
+        hostedServerThread = new Thread(() -> {
+            hostedServer.start();
+        });
+
+        hostedServerThread.setDaemon(true);
+        hostedServerThread.start();
+
+        showMessage("Hosting game on this computer. Connecting as host...", true);
+
+        Thread delayedConnectThread = new Thread(() -> {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+
+            Platform.runLater(() -> connectToServer("localhost"));
+        });
+
+        delayedConnectThread.setDaemon(true);
+        delayedConnectThread.start();
     }
 
     private void connectToServer(String host) {
@@ -502,6 +558,14 @@ public class JunqiApp extends Application {
 
                     viewRedButton.setDisable(true);
                     viewBlueButton.setDisable(true);
+
+                    if (hostGameButton != null) {
+                        hostGameButton.setDisable(true);
+                    }
+
+                    if (joinGameButton != null) {
+                        joinGameButton.setDisable(true);
+                    }
 
                     showMessage("Connected as " + team + ".", true);
                     updateStatus();
@@ -556,11 +620,46 @@ public class JunqiApp extends Application {
             }
         });
 
-        try {
-            networkClient.connect(host, PORT);
-            showMessage("Connecting to server...", true);
-        } catch (Exception e) {
-            showMessage("Connection failed: " + e.getMessage(), false);
+        showMessage("Connecting to " + host + "...", true);
+
+        Thread connectorThread = new Thread(() -> {
+            try {
+                networkClient.connect(host, PORT);
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    showMessage("Connection failed: " + e.getMessage(), false);
+                });
+            }
+        });
+
+        connectorThread.setDaemon(true);
+        connectorThread.start();
+    }
+
+    private void showJoinGameDialog() {
+
+        if (networkMode) {
+            showMessage("You are already connected to a game.", false);
+            return;
+        }
+
+        TextInputDialog dialog = new TextInputDialog("localhost");
+
+        dialog.setTitle("Join Game");
+        dialog.setHeaderText("Enter the host computer's IP address");
+        dialog.setContentText("Host IP:");
+
+        Optional<String> result = dialog.showAndWait();
+
+        if (result.isPresent()) {
+            String host = result.get().trim();
+
+            if (host.isEmpty()) {
+                showMessage("Host IP cannot be empty.", false);
+                return;
+            }
+
+            connectToServer(host);
         }
     }
 
