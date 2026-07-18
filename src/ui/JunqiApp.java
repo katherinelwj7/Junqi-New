@@ -46,6 +46,21 @@ public class JunqiApp extends Application {
     private ActionMode actionMode = ActionMode.MOVE;
     private Label modeLabel;
 
+    private static final double DEFAULT_WINDOW_WIDTH = 1180;
+    private static final double DEFAULT_WINDOW_HEIGHT = 780;
+
+    private static final double MIN_WINDOW_WIDTH = 950;
+    private static final double MIN_WINDOW_HEIGHT = 650;
+
+    private static final double SIDE_PANEL_RATIO = 0.40;
+    private static final double SIDE_PANEL_MIN_WIDTH = 280;
+    private static final double SIDE_PANEL_MAX_WIDTH = 560;
+
+    private BorderPane root;
+
+    private Button moveModeButton;
+    private Button splitModeButton;
+
     private static final int ROWS = 12;
     private static final int COLS = 5;
 
@@ -106,7 +121,7 @@ public class JunqiApp extends Application {
         localViewer = Team.RED;
         cellButtons = new Button[12][5];
 
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
         root.setPadding(new Insets(16));
 
         statusLabel = new Label();
@@ -125,11 +140,10 @@ public class JunqiApp extends Application {
 
         VBox sidePanel = createSidePanel();
 
-        ScrollPane sideScrollPane = new ScrollPane(sidePanel);
+        sideScrollPane = new ScrollPane(sidePanel);
         sideScrollPane.setFitToWidth(true);
-        sideScrollPane.setPrefWidth(280);
-        sideScrollPane.setMinWidth(230);
-        sideScrollPane.setMaxWidth(360);
+        sideScrollPane.setMinWidth(SIDE_PANEL_MIN_WIDTH);
+        sideScrollPane.setMaxWidth(SIDE_PANEL_MAX_WIDTH);
 
         VBox topBox = new VBox(6);
         topBox.getChildren().addAll(statusLabel, messageLabel);
@@ -138,19 +152,23 @@ public class JunqiApp extends Application {
         root.setCenter(boardPane);
         root.setRight(sideScrollPane);
 
-        refreshBoard();
 
-        Scene scene = new Scene(root, 800, 600);
-        sideScrollPane.prefWidthProperty().bind(
-                scene.widthProperty().multiply(0.36)
-        );
+
+        Scene scene = new Scene(root, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
+
         scene.widthProperty().addListener((obs, oldWidth, newWidth) -> {
             updateResponsiveStyle(root, newWidth.doubleValue());
         });
 
         stage.setTitle("Junqi");
+        stage.setMinWidth(MIN_WINDOW_WIDTH);
+        stage.setMinHeight(MIN_WINDOW_HEIGHT);
         stage.setScene(scene);
-        updateResponsiveStyle(root, 800);
+
+        updateResponsiveLayout(DEFAULT_WINDOW_WIDTH);
+        refreshBoard();
+        updateStatus();
+
         stage.show();
     }
 
@@ -376,6 +394,8 @@ public class JunqiApp extends Application {
 
         VBox sidePanel = new VBox(10);
         sidePanel.setPadding(new Insets(10));
+        sidePanel.setFillWidth(true);
+        sidePanel.setMaxWidth(Double.MAX_VALUE);
 
         viewRedButton = new Button("View RED");
         viewBlueButton = new Button("View BLUE");
@@ -383,15 +403,19 @@ public class JunqiApp extends Application {
 
         modeLabel = new Label("Mode: MOVE");
 
-        Button moveModeButton = new Button("Move Mode");
-        Button splitModeButton = new Button("Split Mode");
+        moveModeButton = new Button("Move Mode");
+        splitModeButton = new Button("Split Mode");
         Button clearSelectionButton = new Button("Clear Selection");
 
         Label legendTitle = new Label("Legend");
         Label legendLabel = new Label(getLegendText());
+        legendLabel.setWrapText(true);
+        legendLabel.setMaxWidth(Double.MAX_VALUE);
 
         Label ruleTitle = new Label("Special Rules");
         Label ruleLabel = new Label(getShortRulesText());
+        ruleLabel.setWrapText(true);
+        ruleLabel.setMaxWidth(Double.MAX_VALUE);
 
         Button tutorialButton = new Button("Open Tutorial");
 
@@ -445,6 +469,12 @@ public class JunqiApp extends Application {
         });
 
         moveModeButton.setOnAction(e -> {
+
+            if (!canChooseActionMode()) {
+                showMessage("Move mode is only available after the game starts.", false);
+                return;
+            }
+
             actionMode = ActionMode.MOVE;
             clearSelection();
             modeLabel.setText("Mode: MOVE");
@@ -453,6 +483,12 @@ public class JunqiApp extends Application {
         });
 
         splitModeButton.setOnAction(e -> {
+
+            if (!canChooseActionMode()) {
+                showMessage("Split mode is only available after the game starts.", false);
+                return;
+            }
+
             actionMode = ActionMode.SPLIT;
             clearSelection();
             modeLabel.setText("Mode: SPLIT");
@@ -501,6 +537,15 @@ public class JunqiApp extends Application {
         sidePanel.setMinWidth(260);
 
         return sidePanel;
+    }
+
+    private boolean canChooseActionMode() {
+
+        if (networkMode) {
+            return networkState == GameState.PLAYING;
+        }
+
+        return game.getState() == GameState.PLAYING;
     }
 
     private void hostGame() {
@@ -698,6 +743,35 @@ public class JunqiApp extends Application {
         } else {
             startButton.setText("New Game");
             startButton.setDisable(false);
+        }
+    }
+
+    private void updateActionButtons() {
+
+        if (moveModeButton == null || splitModeButton == null) {
+            return;
+        }
+
+        GameState currentState;
+
+        if (networkMode) {
+            currentState = networkState;
+        } else {
+            currentState = game.getState();
+        }
+
+        if (currentState == GameState.SETUP) {
+            moveModeButton.setDisable(true);
+            splitModeButton.setDisable(true);
+            modeLabel.setText("Mode: SETUP / SWAP");
+        } else if (currentState == GameState.PLAYING) {
+            moveModeButton.setDisable(false);
+            splitModeButton.setDisable(false);
+            modeLabel.setText("Mode: " + actionMode);
+        } else {
+            moveModeButton.setDisable(true);
+            splitModeButton.setDisable(true);
+            modeLabel.setText("Mode: GAME FINISHED");
         }
     }
 
@@ -1046,6 +1120,38 @@ public class JunqiApp extends Application {
         }
 
         updateStartButton();
+        updateActionButtons();
+    }
+
+    private void updateResponsiveLayout(double windowWidth) {
+
+        double targetSideWidth = windowWidth * SIDE_PANEL_RATIO;
+
+        if (targetSideWidth < SIDE_PANEL_MIN_WIDTH) {
+            targetSideWidth = SIDE_PANEL_MIN_WIDTH;
+        }
+
+        if (targetSideWidth > SIDE_PANEL_MAX_WIDTH) {
+            targetSideWidth = SIDE_PANEL_MAX_WIDTH;
+        }
+
+        if (sideScrollPane != null) {
+            sideScrollPane.setPrefWidth(targetSideWidth);
+        }
+
+        int fontSize;
+
+        if (windowWidth < 900) {
+            fontSize = 12;
+        } else if (windowWidth < 1200) {
+            fontSize = 13;
+        } else {
+            fontSize = 15;
+        }
+
+        if (root != null) {
+            root.setStyle("-fx-font-size: " + fontSize + "px;");
+        }
     }
 
     private String getCellBaseStyle(int r, int c) {
