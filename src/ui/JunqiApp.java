@@ -46,6 +46,18 @@ public class JunqiApp extends Application {
     private ActionMode actionMode = ActionMode.MOVE;
     private Label modeLabel;
 
+    private static final String STATUS_NORMAL_STYLE =
+            "-fx-font-size: 16px;" +
+                    "-fx-text-fill: #222222;" +
+                    "-fx-font-weight: normal;" +
+                    "-fx-padding: 4 0 4 0;";
+
+    private static final String STATUS_IMPORTANT_STYLE =
+            "-fx-font-size: 20px;" +
+                    "-fx-text-fill: #B23A3A;" +
+                    "-fx-font-weight: bold;" +
+                    "-fx-padding: 6 0 6 0;";
+
     private static final double DEFAULT_WINDOW_WIDTH = 1180;
     private static final double DEFAULT_WINDOW_HEIGHT = 780;
 
@@ -125,6 +137,7 @@ public class JunqiApp extends Application {
         root.setPadding(new Insets(16));
 
         statusLabel = new Label();
+        statusLabel.setStyle(STATUS_NORMAL_STYLE);
         messageLabel = new Label("Welcome to Junqi.");
 
         messageLabel.setStyle(
@@ -1084,34 +1097,46 @@ public class JunqiApp extends Application {
         }
     }
 
+    private void setStatusText(String text, boolean important) {
+
+        statusLabel.setText(text);
+
+        if (important) {
+            statusLabel.setStyle(STATUS_IMPORTANT_STYLE);
+        } else {
+            statusLabel.setStyle(STATUS_NORMAL_STYLE);
+        }
+    }
+
     private void updateStatus() {
 
         if (networkMode) {
 
             if (networkState == GameState.SETUP) {
-                statusLabel.setText("Network Setup. You are: " + localViewer
+                setStatusText("SETUP: You may begin setting up your pieces now. You are: " + localViewer
                 + ". RED ready: " + networkRedReady
-                        + ". BLUE ready: " + networkBlueReady);
+                        + ". BLUE ready: " + networkBlueReady, true);
             } else if (networkState == GameState.PLAYING) {
-                statusLabel.setText("Network Game. Current turn: " + networkCurrentTurn
+                setStatusText("PLAYING: The game has started. Current turn: " + networkCurrentTurn
                         + ". You are: " + localViewer
-                        + ". Mode: " + actionMode);
+                        + ". Mode: " + actionMode, true);
             } else {
-                statusLabel.setText("Network Game Finished. Winner: " + networkWinner
-                        + ". Draw: " + networkDraw);
+                setStatusText("FINISHED. Winner: " + networkWinner
+                        + ". Draw: " + networkDraw, true);
             }
 
         } else {
 
             if (game.getState() == GameState.SETUP) {
-                statusLabel.setText("Setup phase. Local viewer: " + localViewer);
+                setStatusText("SETUP: You may begin setting up your pieces now. Local viewer: "
+                        + localViewer, true);
             } else if (game.getState() == GameState.PLAYING) {
-                statusLabel.setText("Playing. Current turn: " + game.getCurrentTurn()
+                setStatusText("PLAYING: The game has started. Current turn: " + game.getCurrentTurn()
                         + ". Local viewer: " + localViewer
-                        + ". Mode: " + actionMode);
+                        + ". Mode: " + actionMode, true);
             } else {
-                statusLabel.setText("Game finished. Winner: " + game.getWinner()
-                        + ". Draw: " + game.isDraw());
+                setStatusText("FINISHED. Winner: " + game.getWinner()
+                        + ". Draw: " + game.isDraw(), true);
             }
         }
 
