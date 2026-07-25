@@ -29,6 +29,11 @@ public class GameServer {
     private boolean redNewGameReady = false;
     private boolean blueNewGameReady = false;
 
+    private int lastFromRow = -1;
+    private int lastFromCol = -1;
+    private int lastToRow = -1;
+    private int lastToCol = -1;
+
     public GameServer(int port) {
         this.port = port;
         this.game = new Game();
@@ -185,6 +190,8 @@ public class GameServer {
             redNewGameReady = false;
             blueNewGameReady = false;
 
+            clearLastAction();
+
             broadcastMessage("Both players agreed. New game created.");
             broadcastUpdates();
             return;
@@ -205,9 +212,16 @@ public class GameServer {
             boolean success = game.swapSetupPieces(client.team, r1, c1, r2, c2);
 
             if (success) {
+                // Setup swaps are private, do not remember publicly
+                clearLastAction();
+
                 sendMessageToClient(client, getGameMessageOr("Swap succeeded."));
+
+                // Board still updates for both players, but opponent only see hidden backs
                 broadcastUpdates();
             } else {
+
+                // Swap failures are private, do not broadcast
                 sendMessageToClient(client, getGameMessageOr("Swap failed."));
                 sendUpdateToClient(client);
             }
@@ -240,6 +254,7 @@ public class GameServer {
             boolean success = game.move(r1, c1, r2, c2);
 
             if (success) {
+                rememberLastAction(r1, c1, r2, c2);
                 sendMessageToClient(client, getGameMessageOr("Move succeeded."));
                 broadcastUpdates();
             } else {
@@ -275,6 +290,7 @@ public class GameServer {
             boolean success = game.split(r1, c1, r2, c2);
 
             if (success) {
+                rememberLastAction(r1, c1, r2, c2);
                 sendMessageToClient(client, getGameMessageOr("Split succeeded."));
                 broadcastUpdates();
             } else {
@@ -299,6 +315,28 @@ public class GameServer {
         return null;
     }
 
+    private void rememberLastAction(int fromRow, int fromCol, int toRow, int toCol) {
+        lastFromRow = fromRow;
+        lastFromCol = fromCol;
+        lastToRow = toRow;
+        lastToCol = toCol;
+    }
+
+    private void clearLastAction() {
+        lastFromRow = -1;
+        lastFromCol = -1;
+        lastToRow = -1;
+        lastToCol = -1;
+    }
+
+    private String createLastActionLine() {
+        return "LAST_ACTION " +
+                lastFromRow + " " +
+                lastFromCol + " " +
+                lastToRow + " " +
+                lastToCol;
+    }
+
     private void sendMessageToClient(ClientHandler client, String message) {
         client.sendLine("MESSAGE " + message);
     }
@@ -318,6 +356,7 @@ public class GameServer {
     private void sendUpdateToClient(ClientHandler client) {
 
         client.sendLine(createStateLine());
+        client.sendLine(createLastActionLine());
 
         client.sendLine("BOARD");
 

@@ -25,6 +25,8 @@ public class GameClient {
 
         void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw, boolean redReady, boolean blueReady);
 
+        void onLastActionUpdated(int fromRow, int fromCol, int toRow, int toCol);
+
         void onMessage(String message);
 
         void onBoardUpdated(String[][] board);
@@ -62,12 +64,26 @@ public class GameClient {
                     handleStateLine(line);
                 } else if (line.equals("BOARD")) {
                     handleBoardBlock();
+                } else if (line.startsWith("LAST_ACTION ")) {
+                    handleLastActionLine(line);
                 }
             }
 
         } catch (IOException e) {
             listener.onDisconnected();
         }
+    }
+
+    private void handleLastActionLine(String line) {
+
+        String[] parts = line.split("\\s+");
+
+        int fromRow = Integer.parseInt(parts[1]);
+        int fromCol = Integer.parseInt(parts[2]);
+        int toRow = Integer.parseInt(parts[3]);
+        int toCol = Integer.parseInt(parts[4]);
+
+        listener.onLastActionUpdated(fromRow, fromCol, toRow, toCol);
     }
 
     private void handleTeamLine(String line) {

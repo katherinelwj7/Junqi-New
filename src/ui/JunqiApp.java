@@ -123,6 +123,11 @@ public class JunqiApp extends Application {
     private Button hostGameButton;
     private Button joinGameButton;
 
+    private int lastFromRow = -1;
+    private int lastFromCol = -1;
+    private int lastToRow = -1;
+    private int lastToCol = -1;
+
     @Override
     public void start(Stage stage) {
 
@@ -216,6 +221,13 @@ public class JunqiApp extends Application {
         errorToCol = pendingToCol;
     }
 
+    private void markActionAsError(int fromRow, int fromCol, int toRow, int toCol) {
+        errorFromRow = fromRow;
+        errorFromCol = fromCol;
+        errorToRow = toRow;
+        errorToCol = toCol;
+    }
+
     private void clearErrorHighlight() {
         errorFromRow = -1;
         errorFromCol = -1;
@@ -226,6 +238,25 @@ public class JunqiApp extends Application {
     private boolean isErrorCell(int row, int col) {
         return (row == errorFromRow && col == errorFromCol)
                 || (row == errorToRow && col == errorToCol);
+    }
+
+    private void rememberLastAction(int fromRow, int fromCol, int toRow, int toCol) {
+        lastFromRow = fromRow;
+        lastFromCol = fromCol;
+        lastToRow = toRow;
+        lastToCol = toCol;
+    }
+
+    private void clearLastActionHighlight() {
+        lastFromRow = -1;
+        lastFromCol = -1;
+        lastToRow = -1;
+        lastToCol = -1;
+    }
+
+    private boolean isLastActionCell(int row, int col) {
+        return (row == lastFromRow && col == lastFromCol)
+                || (row == lastToRow && col == lastToCol);
     }
 
     private void initializeNetworkBoard() {
@@ -646,6 +677,14 @@ public class JunqiApp extends Application {
             }
 
             @Override
+            public void onLastActionUpdated(int fromRow, int fromCol, int toRow, int toCol) {
+                Platform.runLater(() -> {
+                    rememberLastAction(fromRow, fromCol, toRow, toCol);
+                    refreshBoard();
+                });
+            }
+
+            @Override
             public void onMessage(String message) {
                 Platform.runLater(() -> {
 
@@ -653,6 +692,7 @@ public class JunqiApp extends Application {
 
                     if (success) {
                         clearErrorHighlight();
+                        clearPendingAction();
                     } else {
                         markPendingActionAsError();
                     }
@@ -810,6 +850,11 @@ public class JunqiApp extends Application {
         int col = toModelCol(viewCol);
 
         if (selectedRow == -1) {
+
+            clearLastActionHighlight();
+            //clearLastActionArrow();
+            clearErrorHighlight();
+
             selectedRow = row;
             selectedCol = col;
 
@@ -835,8 +880,13 @@ public class JunqiApp extends Application {
             boolean success = game.swapSetupPieces(localViewer, fromRow, fromCol, row, col);
 
             if (success) {
+                clearErrorHighlight();
+                clearLastActionHighlight();
+
                 showMessage(getLocalGameMessageOr("Swap succeeded."), true);
             } else {
+                markActionAsError(fromRow, fromCol, row, col);
+
                 showMessage(getLocalGameMessageOr("Swap failed."), false);
             }
 
@@ -848,8 +898,13 @@ public class JunqiApp extends Application {
                 success = game.move(fromRow, fromCol, row, col);
 
                 if (success) {
+                    clearErrorHighlight();
+                    rememberLastAction(fromRow, fromCol, row, col);
+
                     showMessage(getLocalGameMessageOr("Move succeeded. Current turn: " + game.getCurrentTurn()), true);
                 } else {
+                    markActionAsError(fromRow, fromCol, row, col);
+
                     showMessage(getLocalGameMessageOr("Move failed. Current turn: " + game.getCurrentTurn()), false);
                 }
 
@@ -857,8 +912,13 @@ public class JunqiApp extends Application {
                 success = game.split(fromRow, fromCol, row, col);
 
                 if (success) {
+                    clearErrorHighlight();
+                    rememberLastAction(fromRow, fromCol, row, col);
+
                     showMessage(getLocalGameMessageOr("Split succeeded. Current turn: " + game.getCurrentTurn()), true);
                 } else {
+                    markActionAsError(fromRow, fromCol, row, col);
+
                     showMessage(getLocalGameMessageOr("Split failed. Current turn: " + game.getCurrentTurn()), false);
                 }
             }
@@ -1086,6 +1146,9 @@ public class JunqiApp extends Application {
 
                 if (isErrorCell(modelR, modelC)) {
                     style += "-fx-border-color: #D62828;" +
+                            "-fx-border-width: 4;";
+                } else if (isLastActionCell(modelR, modelC)) {
+                    style += "-fx-border-color: #E0A100;" +
                             "-fx-border-width: 4;";
                 } else if (modelR == selectedRow && modelC == selectedCol) {
                     style += "-fx-border-color: black;" +
