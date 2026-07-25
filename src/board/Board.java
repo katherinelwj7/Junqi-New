@@ -27,39 +27,7 @@ public class Board {
 
         Tile tile = grid[r][c];
 
-        // 检查军旗摆放是否符合规则
-        if (p != null && p.rank == Rank.FLAG && tile.type != TileType.BASE) {
-            System.out.println("Flag must be placed in BASE");
-            return false;
-        }
 
-        // 检查地雷摆放是否符合规则
-        if (p != null && p.rank == Rank.MINE) {
-
-            if (p.team == Team.RED && r < 10) {
-                System.out.println("Mine must be in last two rows");
-                return false;
-            }
-
-            if (p.team == Team.BLUE && r > 1) {
-                System.out.println("Mine must be in last two rows");
-                return false;
-            }
-        }
-
-        // 检查炸弹摆放是否符合规则
-        if (p != null && p.rank == Rank.BOMB) {
-
-            if (p.team == Team.BLUE && r == 5) {
-                System.out.println("Bomb cannot be in first row");
-                return false;
-            }
-
-            if (p.team == Team.RED && r == 6) {
-                System.out.println("Bomb cannot be in first row");
-                return false;
-            }
-        }
 
         grid[r][c].piece = p;
         return true;

@@ -10,9 +10,9 @@ import console.ConsoleGame;
 public class Main {
     public static void main(String[] args) {
 
-        //TestRunner.runAllTests();
+        TestRunner.runAllTests();
 
-        ConsoleGame.run();
+        //ConsoleGame.run();
 
         /*Piece general = new Piece(Rank.GENERAL, Team.RED);
         Piece brigade = new Piece(Rank.BRIGADE, Team.BLUE);

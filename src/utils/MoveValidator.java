@@ -6,6 +6,7 @@ import board.Board;
 import board.Tile;
 import board.ConnectionType;
 import board.TileType;
+import piece.Team;
 
 
 public class MoveValidator {

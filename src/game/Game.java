@@ -223,7 +223,39 @@ public class Game {
             return false;
         }
 
+        // 检查军旗摆放是否符合规则
+        if (piece != null && piece.rank == Rank.FLAG && tile.type != TileType.BASE) {
+            addMessage("Flag must be placed in BASE");
+            return false;
+        }
 
+        // 检查地雷摆放是否符合规则
+        if (piece != null && piece.rank == Rank.MINE) {
+
+            if (piece.team == Team.RED && r < 10) {
+                addMessage("Mine must be in last two rows");
+                return false;
+            }
+
+            if (piece.team == Team.BLUE && r > 1) {
+                addMessage("Mine must be in last two rows");
+                return false;
+            }
+        }
+
+        // 检查炸弹摆放是否符合规则
+        if (piece != null && piece.rank == Rank.BOMB) {
+
+            if (piece.team == Team.BLUE && r == 5) {
+                addMessage("Bomb cannot be in first row during SETUP");
+                return false;
+            }
+
+            if (piece.team == Team.RED && r == 6) {
+                addMessage("Bomb cannot be in first row during SETUP");
+                return false;
+            }
+        }
 
         // 开局不能放行营
         if (tile.type == TileType.CAMP) {
@@ -674,6 +706,17 @@ public class Game {
             return false;
         }
 
+        // 空格：普通移动
+        if (defender == null) {
+
+            board.placePiece(r2, c2, attacker);
+            board.placePiece(r1, c1, null);
+
+            promoteNewRecruitIfNeeded(r2, c2);
+            finishSuccessfulAction(attackerTeam, false);
+            return true;
+        }
+
         // 己方棋子：尝试merge
         if (defender != null &&
                 attacker.team == defender.team) {
@@ -690,7 +733,7 @@ public class Game {
             return true;
         }
 
-        // 空格：普通移动
+        /*// 空格：普通移动
         if (defender == null) {
 
             board.placePiece(r2, c2, attacker);
@@ -699,7 +742,7 @@ public class Game {
             promoteNewRecruitIfNeeded(r2, c2);
             finishSuccessfulAction(attackerTeam, false);
             return true;
-        }
+        }*/
 
         // 敌方棋子：battle
         boolean targetIsFlag = defender.rank == Rank.FLAG;

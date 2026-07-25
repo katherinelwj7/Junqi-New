@@ -18,6 +18,8 @@ public class TestRunner {
     public static void runAllTests() {
         System.out.println("Running tests...");
 
+        testBombMovesFromCampToCornerBlue();
+        testBombMovesFromCampToCornerRed();
         testGeneralCapturesBrigade();
         testRailwayLongDistanceMove();
         testMiddleRailwayMoveWorks();
@@ -55,6 +57,50 @@ public class TestRunner {
 
     // Movement tests
 
+
+    private static void testBombMovesFromCampToCornerBlue() {
+        Game game = new Game();
+
+        game.forcePlacePieceForTesting(4, 3,
+                new Piece(Rank.BOMB, Team.BLUE));
+
+        game.startGameForTesting();
+        game.setCurrentTurnForTesting(Team.BLUE);
+
+        assertNull(game.getBoard().getPiece(5, 4),
+                "Target corner should be empty before move");
+
+        boolean success = game.move(4, 3, 5, 4);
+
+        assertTrue(success, "BOMB should be able to move from camp to empty corner");
+        assertNull(game.getBoard().getPiece(4, 3),
+                "Original camp should be empty after move");
+        assertPiece(game, 5, 4, Rank.BOMB, Team.BLUE);
+
+        pass("BOMB moves from BLUE camp to empty corner");
+    }
+
+    private static void testBombMovesFromCampToCornerRed() {
+        Game game = new Game();
+
+        game.forcePlacePieceForTesting(7, 1,
+                new Piece(Rank.BOMB, Team.RED));
+
+        game.startGameForTesting();
+        game.setCurrentTurnForTesting(Team.RED);
+
+        assertNull(game.getBoard().getPiece(6, 0),
+                "Target corner should be empty before move");
+
+        boolean success = game.move(7, 1, 6, 0);
+
+        assertTrue(success, "BOMB should be able to move from camp to empty corner");
+        assertNull(game.getBoard().getPiece(7, 1),
+                "Original camp should be empty after move");
+        assertPiece(game, 6, 0, Rank.BOMB, Team.RED);
+
+        pass("BOMB moves from RED camp to empty corner");
+    }
 
     private static void testGeneralCapturesBrigade() {
         System.out.println("Test: GENERAL captures BRIGADE");

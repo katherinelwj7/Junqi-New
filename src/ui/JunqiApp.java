@@ -22,6 +22,8 @@ import javafx.application.Platform;
 import network.GameClient;
 import javafx.scene.control.TextInputDialog;
 import network.GameServer;
+import javafx.scene.shape.Line;
+import javafx.scene.shape.Polygon;
 
 import java.util.Optional;
 
@@ -127,6 +129,10 @@ public class JunqiApp extends Application {
     private int lastFromCol = -1;
     private int lastToRow = -1;
     private int lastToCol = -1;
+
+    private Pane boardPane;
+    private Line lastActionArrowLine;
+    private Polygon lastActionArrowHead;
 
     @Override
     public void start(Stage stage) {
@@ -254,6 +260,105 @@ public class JunqiApp extends Application {
         lastToCol = -1;
     }
 
+    private void clearLastActionArrow() {
+
+        if (boardPane == null) {
+            return;
+        }
+
+        if (lastActionArrowLine != null) {
+            boardPane.getChildren().remove(lastActionArrowLine);
+            lastActionArrowLine = null;
+        }
+
+        if (lastActionArrowHead != null) {
+            boardPane.getChildren().remove(lastActionArrowHead);
+            lastActionArrowHead = null;
+        }
+    }
+
+    private void drawLastActionArrow() {
+
+        clearLastActionArrow();
+
+        if (boardPane == null) {
+            return;
+        }
+
+        if (lastFromRow == -1 || lastToRow == -1) {
+            return;
+        }
+
+        int fromViewRow = toViewRow(lastFromRow);
+        int fromViewCol = toViewCol(lastFromCol);
+        int toViewRow = toViewRow(lastToRow);
+        int toViewCol = toViewCol(lastToCol);
+
+        double startCenterX = getCellCenterX(fromViewCol);
+        double startCenterY = getCellCenterY(fromViewRow);
+        double endCenterX = getCellCenterX(toViewCol);
+        double endCenterY = getCellCenterY(toViewRow);
+
+        double dx = endCenterX - startCenterX;
+        double dy = endCenterY - startCenterY;
+
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance == 0) {
+            return;
+        }
+
+        double unitX = dx / distance;
+        double unitY = dy / distance;
+
+        // Shorten the arrow a little so it does not cover the piece text too much.
+        double shortenAmount = 18;
+
+        double startX = startCenterX + unitX * shortenAmount;
+        double startY = startCenterY + unitY * shortenAmount;
+
+        double endX = endCenterX - unitX * shortenAmount;
+        double endY = endCenterY - unitY * shortenAmount;
+
+        lastActionArrowLine = new Line(startX, startY, endX, endY);
+        lastActionArrowLine.setStrokeWidth(4);
+        lastActionArrowLine.setStyle("-fx-stroke: #E0A100;");
+        lastActionArrowLine.setMouseTransparent(true);
+
+        lastActionArrowHead = createArrowHead(startX, startY, endX, endY);
+        lastActionArrowHead.setStyle("-fx-fill: #E0A100;");
+        lastActionArrowHead.setMouseTransparent(true);
+
+        boardPane.getChildren().addAll(lastActionArrowLine, lastActionArrowHead);
+
+        lastActionArrowLine.toFront();
+        lastActionArrowHead.toFront();
+    }
+
+    private Polygon createArrowHead(double startX, double startY, double endX, double endY) {
+
+        double arrowLength = 14;
+        double arrowWidth = 8;
+
+        double angle = Math.atan2(endY - startY, endX - startX);
+
+        double x1 = endX - arrowLength * Math.cos(angle) + arrowWidth * Math.sin(angle);
+        double y1 = endY - arrowLength * Math.sin(angle) - arrowWidth * Math.cos(angle);
+
+        double x2 = endX - arrowLength * Math.cos(angle) - arrowWidth * Math.sin(angle);
+        double y2 = endY - arrowLength * Math.sin(angle) + arrowWidth * Math.cos(angle);
+
+        Polygon arrowHead = new Polygon();
+
+        arrowHead.getPoints().addAll(
+                endX, endY,
+                x1, y1,
+                x2, y2
+        );
+
+        return arrowHead;
+    }
+
     private boolean isLastActionCell(int row, int col) {
         return (row == lastFromRow && col == lastFromCol)
                 || (row == lastToRow && col == lastToCol);
@@ -331,15 +436,15 @@ public class JunqiApp extends Application {
 
     private Pane createBoardPane() {
 
-        Pane pane = new Pane();
+        boardPane = new Pane();
 
         double width = BOARD_PADDING * 2 + COLS * CELL_W;
         double height = BOARD_PADDING * 2 + ROWS * CELL_H;
 
-        pane.setPrefSize(width, height);
-        pane.setMinSize(width, height);
+        boardPane.setPrefSize(width, height);
+        boardPane.setMinSize(width, height);
 
-        drawConnections(pane);
+        drawConnections(boardPane);
 
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
@@ -364,11 +469,11 @@ public class JunqiApp extends Application {
                 button.setOnAction(e -> handleCellClick(row, col));
 
                 cellButtons[r][c] = button;
-                pane.getChildren().add(button);
+                boardPane.getChildren().add(button);
             }
         }
 
-        return pane;
+        return boardPane;
     }
 
     private void drawConnections(Pane pane) {
@@ -852,7 +957,7 @@ public class JunqiApp extends Application {
         if (selectedRow == -1) {
 
             clearLastActionHighlight();
-            //clearLastActionArrow();
+            clearLastActionArrow();
             clearErrorHighlight();
 
             selectedRow = row;
@@ -882,6 +987,7 @@ public class JunqiApp extends Application {
             if (success) {
                 clearErrorHighlight();
                 clearLastActionHighlight();
+                clearLastActionArrow();
 
                 showMessage(getLocalGameMessageOr("Swap succeeded."), true);
             } else {
@@ -997,6 +1103,22 @@ public class JunqiApp extends Application {
         }
 
         return viewCol;
+    }
+
+    private int toViewRow(int modelRow) {
+        if (localViewer == Team.BLUE) {
+            return 11 - modelRow;
+        }
+
+        return modelRow;
+    }
+
+    private int toViewCol(int modelCol) {
+        if (localViewer == Team.BLUE) {
+            return 4 - modelCol;
+        }
+
+        return modelCol;
     }
 
     private String getLegendText() {
@@ -1158,6 +1280,8 @@ public class JunqiApp extends Application {
                 cellButtons[viewR][viewC].setStyle(style);
             }
         }
+
+        drawLastActionArrow();
     }
 
     private void setStatusText(String text, boolean important) {
