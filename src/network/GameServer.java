@@ -26,6 +26,19 @@ public class GameServer {
     private boolean redReady = false;
     private boolean blueReady = false;
 
+    private boolean redDrawReady = false;
+    private boolean blueDrawReady = false;
+
+    private int successfulActionCount = 0;
+
+    private int redLastDrawOfferAction = -1000;
+    private int blueLastDrawOfferAction = -1000;
+
+    private Team pendingDrawOfferTeam = null;
+    private Team pendingNewGameOfferTeam = null;
+
+    private static final int DRAW_OFFER_COOLDOWN = 5;
+
     private boolean redNewGameReady = false;
     private boolean blueNewGameReady = false;
 
@@ -190,10 +203,102 @@ public class GameServer {
             redNewGameReady = false;
             blueNewGameReady = false;
 
+            successfulActionCount = 0;
+            redLastDrawOfferAction = -1000;
+            blueLastDrawOfferAction = -1000;
+            pendingDrawOfferTeam = null;
+            pendingNewGameOfferTeam = null;
+
             clearLastAction();
 
             broadcastMessage("Both players agreed. New game created.");
             broadcastUpdates();
+            return;
+        }
+
+        if (command.equals("NEW_GAME_REQUEST")) {
+
+            if (game.getState() != GameState.FINISHED) {
+                sendMessageToClient(client, "New game can only be requested after the game is finished.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            ClientHandler opponent = findOpponent(client);
+
+            if (opponent == null) {
+                sendMessageToClient(client, "No opponent is connected.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            pendingNewGameOfferTeam = client.team;
+
+            sendMessageToClient(client, "New game request sent. Waiting for opponent.");
+            opponent.sendLine("NEW_GAME_REQUEST " + client.team);
+
+            sendUpdateToClient(client);
+            sendUpdateToClient(opponent);
+
+            return;
+        }
+
+        if (command.equals("NEW_GAME_RESPONSE")) {
+
+            if (parts.length != 2) {
+                sendMessageToClient(client, "Invalid new game response.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            if (pendingNewGameOfferTeam == null) {
+                sendMessageToClient(client, "There is no pending new game request.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            if (client.team == pendingNewGameOfferTeam) {
+                sendMessageToClient(client, "You cannot respond to your own new game request.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            boolean accepted = parts[1].equalsIgnoreCase("YES");
+
+            ClientHandler requester = findClientByTeam(pendingNewGameOfferTeam);
+
+            if (!accepted) {
+                if (requester != null) {
+                    sendMessageToClient(requester, client.team + " declined the new game request.");
+                    sendUpdateToClient(requester);
+                }
+
+                sendMessageToClient(client, "You declined the new game request.");
+                sendUpdateToClient(client);
+
+                pendingNewGameOfferTeam = null;
+                return;
+            }
+
+            game = new Game();
+            game.setupDefaultLayout();
+
+            redReady = false;
+            blueReady = false;
+            redNewGameReady = false;
+            blueNewGameReady = false;
+
+            successfulActionCount = 0;
+            redLastDrawOfferAction = -1000;
+            blueLastDrawOfferAction = -1000;
+            pendingDrawOfferTeam = null;
+            pendingNewGameOfferTeam = null;
+
+            clearLastAction();
+
+            broadcastMessage("Both players agreed. New game created.");
+            broadcastUpdates();
+
             return;
         }
 
@@ -213,7 +318,7 @@ public class GameServer {
 
             if (success) {
                 // Setup swaps are private, do not remember publicly
-                clearLastAction();
+                //clearLastAction();
 
                 sendMessageToClient(client, getGameMessageOr("Swap succeeded."));
 
@@ -255,6 +360,10 @@ public class GameServer {
 
             if (success) {
                 rememberLastAction(r1, c1, r2, c2);
+
+                successfulActionCount++;
+                pendingDrawOfferTeam = null;
+
                 sendMessageToClient(client, getGameMessageOr("Move succeeded."));
                 broadcastUpdates();
             } else {
@@ -291,10 +400,104 @@ public class GameServer {
 
             if (success) {
                 rememberLastAction(r1, c1, r2, c2);
+
+                successfulActionCount++;
+                pendingDrawOfferTeam = null;
+
                 sendMessageToClient(client, getGameMessageOr("Split succeeded."));
                 broadcastUpdates();
             } else {
                 sendMessageToClient(client, getGameMessageOr("Split failed."));
+                sendUpdateToClient(client);
+            }
+
+            return;
+        }
+
+        if (command.equals("DRAW_OFFER")) {
+
+            if (game.getState() != GameState.PLAYING) {
+                sendMessageToClient(client, "Draw can only be offered during the game.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            int remaining = getRemainingDrawCooldown(client.team);
+
+            if (remaining > 0) {
+                sendMessageToClient(client,
+                        "Please do not offer draws too frequently. Wait "
+                                + remaining + " more successful turn(s).");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            ClientHandler opponent = findOpponent(client);
+
+            if (opponent == null) {
+                sendMessageToClient(client, "No opponent is connected.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            pendingDrawOfferTeam = client.team;
+            setLastDrawOfferAction(client.team, successfulActionCount);
+
+            sendMessageToClient(client, "Draw offer sent. Waiting for opponent.");
+            opponent.sendLine("DRAW_OFFER " + client.team);
+
+            sendUpdateToClient(client);
+            sendUpdateToClient(opponent);
+
+            return;
+        }
+
+        if (command.equals("DRAW_RESPONSE")) {
+
+            if (parts.length != 2) {
+                sendMessageToClient(client, "Invalid draw response.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            if (pendingDrawOfferTeam == null) {
+                sendMessageToClient(client, "There is no pending draw offer.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            if (client.team == pendingDrawOfferTeam) {
+                sendMessageToClient(client, "You cannot respond to your own draw offer.");
+                sendUpdateToClient(client);
+                return;
+            }
+
+            boolean accepted = parts[1].equalsIgnoreCase("YES");
+
+            ClientHandler offerer = findClientByTeam(pendingDrawOfferTeam);
+
+            if (!accepted) {
+                if (offerer != null) {
+                    sendMessageToClient(offerer, client.team + " declined the draw offer.");
+                    sendUpdateToClient(offerer);
+                }
+
+                sendMessageToClient(client, "You declined the draw offer.");
+                sendUpdateToClient(client);
+
+                pendingDrawOfferTeam = null;
+                return;
+            }
+
+            boolean success = game.agreeDraw();
+
+            pendingDrawOfferTeam = null;
+
+            if (success) {
+                broadcastMessage("Both players agreed to a draw.");
+                broadcastUpdates();
+            } else {
+                sendMessageToClient(client, getGameMessageOr("Could not agree to draw."));
                 sendUpdateToClient(client);
             }
 
@@ -309,6 +512,57 @@ public class GameServer {
         for (ClientHandler other : clients) {
             if (other != client) {
                 return other;
+            }
+        }
+
+        return null;
+    }
+
+    private void setDrawReady(Team team, boolean ready) {
+        if (team == Team.RED) {
+            redDrawReady = ready;
+        } else if (team == Team.BLUE) {
+            blueDrawReady = ready;
+        }
+    }
+
+    private boolean bothPlayersWantDraw() {
+        return redDrawReady && blueDrawReady;
+    }
+
+    private int getLastDrawOfferAction(Team team) {
+        if (team == Team.RED) {
+            return redLastDrawOfferAction;
+        }
+
+        return blueLastDrawOfferAction;
+    }
+
+    private void setLastDrawOfferAction(Team team, int value) {
+        if (team == Team.RED) {
+            redLastDrawOfferAction = value;
+        } else {
+            blueLastDrawOfferAction = value;
+        }
+    }
+
+    private int getRemainingDrawCooldown(Team team) {
+        int lastOffer = getLastDrawOfferAction(team);
+        int passed = successfulActionCount - lastOffer;
+        int remaining = DRAW_OFFER_COOLDOWN - passed;
+
+        if (remaining < 0) {
+            return 0;
+        }
+
+        return remaining;
+    }
+
+    private ClientHandler findClientByTeam(Team team) {
+
+        for (ClientHandler client : clients) {
+            if (client.team == team) {
+                return client;
             }
         }
 

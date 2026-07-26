@@ -31,6 +31,10 @@ public class GameClient {
 
         void onBoardUpdated(String[][] board);
 
+        void onDrawOfferReceived(Team fromTeam);
+
+        void onNewGameRequestReceived(Team fromTeam);
+
         void onDisconnected();
     }
 
@@ -66,6 +70,10 @@ public class GameClient {
                     handleBoardBlock();
                 } else if (line.startsWith("LAST_ACTION ")) {
                     handleLastActionLine(line);
+                } else if (line.startsWith("DRAW_OFFER")) {
+                    handleDrawOfferLine(line);
+                } else if (line.startsWith("NEW_GAME_REQUEST")) {
+                    handleNewGameRequestLine(line);
                 }
             }
 
@@ -150,6 +158,30 @@ public class GameClient {
         listener.onBoardUpdated(board);
     }
 
+    private void handleDrawOfferLine(String line) {
+
+        String[] parts = line.split("\\s+");
+
+        if (parts.length < 2) {
+            return;
+        }
+
+        Team fromTeam = Team.valueOf(parts[1]);
+        listener.onDrawOfferReceived(fromTeam);
+    }
+
+    private void handleNewGameRequestLine(String line) {
+
+        String[] parts = line.split("\\s+");
+
+        if (parts.length < 2) {
+            return;
+        }
+
+        Team fromTeam = Team.valueOf(parts[1]);
+        listener.onNewGameRequestReceived(fromTeam);
+    }
+
     public void sendStart() {
         sendLine("START");
     }
@@ -173,6 +205,34 @@ public class GameClient {
     private void sendLine(String line) {
         if (out != null) {
             out.println(line);
+        }
+    }
+
+    public void sendDraw() {
+        sendLine("DRAW");
+    }
+
+    public void sendDrawOffer() {
+        sendLine("DRAW_OFFER");
+    }
+
+    public void sendDrawResponse(boolean accepted) {
+        if (accepted) {
+            sendLine("DRAW_RESPONSE YES");
+        } else {
+            sendLine("DRAW_RESPONSE NO");
+        }
+    }
+
+    public void sendNewGameRequest() {
+        sendLine("NEW_GAME_REQUEST");
+    }
+
+    public void sendNewGameResponse(boolean accepted) {
+        if (accepted) {
+            sendLine("NEW_GAME_RESPONSE YES");
+        } else {
+            sendLine("NEW_GAME_RESPONSE NO");
         }
     }
 }

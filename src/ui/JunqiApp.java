@@ -24,6 +24,9 @@ import javafx.scene.control.TextInputDialog;
 import network.GameServer;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import java.util.Optional;
 
 import java.util.Optional;
 
@@ -44,6 +47,8 @@ public class JunqiApp extends Application {
 
     private Label statusLabel;
     private Label messageLabel;
+
+    private Button drawButton;
 
     private ActionMode actionMode = ActionMode.MOVE;
     private Label modeLabel;
@@ -434,6 +439,23 @@ public class JunqiApp extends Application {
         root.setStyle("-fx-font-size: " + fontSize + "px;");
     }
 
+    private boolean showYesNoDialog(String title, String message) {
+
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(message);
+        alert.setContentText(null);
+
+        ButtonType yesButton = new ButtonType("Yes");
+        ButtonType noButton = new ButtonType("No");
+
+        alert.getButtonTypes().setAll(yesButton, noButton);
+
+        Optional<ButtonType> result = alert.showAndWait();
+
+        return result.isPresent() && result.get() == yesButton;
+    }
+
     private Pane createBoardPane() {
 
         boardPane = new Pane();
@@ -549,6 +571,7 @@ public class JunqiApp extends Application {
         viewRedButton = new Button("View RED");
         viewBlueButton = new Button("View BLUE");
         startButton = new Button("Start Game");
+        drawButton = new Button("Offer Draw");
 
         modeLabel = new Label("Mode: MOVE");
 
@@ -587,12 +610,26 @@ public class JunqiApp extends Application {
             if (networkMode) {
 
                 if (networkState == GameState.FINISHED) {
-                    networkClient.sendNewGame();
+
+                    boolean confirmed = showYesNoDialog(
+                            "New Game",
+                            "Send a new game request to your opponent?"
+                    );
+
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    networkClient.sendNewGameRequest();
                     showMessage("New game request sent.", true);
-                } else if (networkState == GameState.SETUP){
+
+                } else if (networkState == GameState.SETUP) {
+
                     networkClient.sendStart();
                     showMessage("Ready request sent.", true);
+
                 } else {
+
                     showMessage("Game has already started.", false);
                 }
 
@@ -600,6 +637,16 @@ public class JunqiApp extends Application {
             }
 
             if (game.getState() == GameState.FINISHED) {
+
+                boolean confirmed = showYesNoDialog(
+                        "New Game",
+                        "Start a new local game?"
+                );
+
+                if (!confirmed) {
+                    return;
+                }
+
                 resetGame();
                 return;
             }
@@ -615,6 +662,35 @@ public class JunqiApp extends Application {
             refreshBoard();
             updateStatus();
             updateStartButton();
+        });
+
+        drawButton.setOnAction(e -> {
+
+            if (networkMode) {
+                networkClient.sendDrawOffer();
+                showMessage("Draw offer sent.", true);
+                return;
+            }
+
+            boolean confirmed = showYesNoDialog(
+                    "Agree to Draw",
+                    "End this local game as a draw?"
+            );
+
+            if (!confirmed) {
+                return;
+            }
+
+            boolean success = game.agreeDraw();
+
+            if (success) {
+                showMessage(getLocalGameMessageOr("Draw agreed."), true);
+            } else {
+                showMessage(getLocalGameMessageOr("Could not agree to draw."), false);
+            }
+
+            refreshBoard();
+            updateStatus();
         });
 
         moveModeButton.setOnAction(e -> {
@@ -672,6 +748,7 @@ public class JunqiApp extends Application {
                 joinGameButton,
                 connectLocalhostButton,
                 startButton,
+                drawButton,
                 modeLabel,
                 moveModeButton,
                 splitModeButton,
@@ -784,7 +861,14 @@ public class JunqiApp extends Application {
             @Override
             public void onLastActionUpdated(int fromRow, int fromCol, int toRow, int toCol) {
                 Platform.runLater(() -> {
-                    rememberLastAction(fromRow, fromCol, toRow, toCol);
+
+                    if (fromRow == -1 || fromCol == -1 || toRow == -1 || toCol == -1) {
+                        clearLastActionHighlight();
+                        clearLastActionArrow();
+                    } else {
+                        rememberLastAction(fromRow, fromCol, toRow, toCol);
+                    }
+
                     refreshBoard();
                 });
             }
@@ -812,6 +896,44 @@ public class JunqiApp extends Application {
                 Platform.runLater(() -> {
                     networkBoard = board;
                     refreshBoard();
+                });
+            }
+
+            @Override
+            public void onDrawOfferReceived(Team fromTeam) {
+                Platform.runLater(() -> {
+
+                    boolean accepted = showYesNoDialog(
+                            "Draw Offer",
+                            fromTeam + " wants to agree to a draw. Do you accept?"
+                    );
+
+                    networkClient.sendDrawResponse(accepted);
+
+                    if (accepted) {
+                        showMessage("You accepted the draw offer.", true);
+                    } else {
+                        showMessage("You declined the draw offer.", true);
+                    }
+                });
+            }
+
+            @Override
+            public void onNewGameRequestReceived(Team fromTeam) {
+                Platform.runLater(() -> {
+
+                    boolean accepted = showYesNoDialog(
+                            "New Game Request",
+                            fromTeam + " wants to start a new game. Do you accept?"
+                    );
+
+                    networkClient.sendNewGameResponse(accepted);
+
+                    if (accepted) {
+                        showMessage("You accepted the new game request.", true);
+                    } else {
+                        showMessage("You declined the new game request.", true);
+                    }
                 });
             }
 
@@ -921,14 +1043,29 @@ public class JunqiApp extends Application {
         if (currentState == GameState.SETUP) {
             moveModeButton.setDisable(true);
             splitModeButton.setDisable(true);
+
+            if (drawButton != null) {
+                drawButton.setDisable(true);
+            }
+
             modeLabel.setText("Mode: SETUP / SWAP");
         } else if (currentState == GameState.PLAYING) {
             moveModeButton.setDisable(false);
             splitModeButton.setDisable(false);
+
+            if (drawButton != null) {
+                drawButton.setDisable(false);
+            }
+
             modeLabel.setText("Mode: " + actionMode);
         } else {
             moveModeButton.setDisable(true);
             splitModeButton.setDisable(true);
+
+            if (drawButton != null) {
+                drawButton.setDisable(true);
+            }
+
             modeLabel.setText("Mode: GAME FINISHED");
         }
     }
@@ -942,11 +1079,16 @@ public class JunqiApp extends Application {
         actionMode = ActionMode.MOVE;
 
         clearSelection();
+        clearErrorHighlight();
+        clearLastActionHighlight();
+        clearLastActionArrow();
 
         showMessage("New game created.", true);
 
         refreshBoard();
         updateStatus();
+        updateStartButton();
+        updateActionButtons();
     }
 
     private void handleCellClick(int viewRow, int viewCol) {
@@ -956,8 +1098,6 @@ public class JunqiApp extends Application {
 
         if (selectedRow == -1) {
 
-            clearLastActionHighlight();
-            clearLastActionArrow();
             clearErrorHighlight();
 
             selectedRow = row;
@@ -1240,6 +1380,45 @@ public class JunqiApp extends Application {
         tutorialStage.show();
     }
 
+    private String getBorderStyle(int modelR, int modelC) {
+
+        boolean error = isErrorCell(modelR, modelC);
+        boolean selected = modelR == selectedRow && modelC == selectedCol;
+        boolean lastAction = isLastActionCell(modelR, modelC);
+
+        if (error && selected) {
+            return "-fx-border-color: #D62828, black;" +
+                    "-fx-border-width: 3, 1.5;" +
+                    "-fx-border-insets: 0, 4;";
+        }
+
+        if (error) {
+            return "-fx-border-color: #D62828;" +
+                    "-fx-border-width: 3;" +
+                    "-fx-border-insets: 0;";
+        }
+
+        if (selected && lastAction) {
+            return "-fx-border-color: #E0A100, black;" +
+                    "-fx-border-width: 3, 1.5;" +
+                    "-fx-border-insets: 0, 4;";
+        }
+
+        if (selected) {
+            return "-fx-border-color: black;" +
+                    "-fx-border-width: 2;" +
+                    "-fx-border-insets: 0;";
+        }
+
+        if (lastAction) {
+            return "-fx-border-color: #E0A100;" +
+                    "-fx-border-width: 3;" +
+                    "-fx-border-insets: 0;";
+        }
+
+        return "";
+    }
+
     private void refreshBoard() {
 
         for (int viewR = 0; viewR < 12; viewR++) {
@@ -1266,16 +1445,7 @@ public class JunqiApp extends Application {
                 String style = getCellBaseStyle(modelR, modelC)
                         + getPieceStyle(modelR, modelC, display);
 
-                if (isErrorCell(modelR, modelC)) {
-                    style += "-fx-border-color: #D62828;" +
-                            "-fx-border-width: 4;";
-                } else if (isLastActionCell(modelR, modelC)) {
-                    style += "-fx-border-color: #E0A100;" +
-                            "-fx-border-width: 4;";
-                } else if (modelR == selectedRow && modelC == selectedCol) {
-                    style += "-fx-border-color: black;" +
-                            "-fx-border-width: 3;";
-                }
+                style += getBorderStyle(modelR, modelC);
 
                 cellButtons[viewR][viewC].setStyle(style);
             }
