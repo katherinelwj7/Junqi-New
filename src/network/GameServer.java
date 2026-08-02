@@ -12,6 +12,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.List;
+import piece.Piece;
+import utils.MoveValidator;
 
 public class GameServer {
 
@@ -46,6 +50,8 @@ public class GameServer {
     private int lastFromCol = -1;
     private int lastToRow = -1;
     private int lastToCol = -1;
+
+    private List<int[]> lastActionPath = new ArrayList<>();
 
     public GameServer(int port) {
         this.port = port;
@@ -356,10 +362,18 @@ public class GameServer {
             int r2 = Integer.parseInt(parts[3]);
             int c2 = Integer.parseInt(parts[4]);
 
+            Piece movingPiece = game.getBoard().getPiece(r1, c1);
+
+            List<int[]> path = MoveValidator.findMovePath(
+                    game.getBoard(),
+                    movingPiece,
+                    r1, c1, r2, c2
+            );
+
             boolean success = game.move(r1, c1, r2, c2);
 
             if (success) {
-                rememberLastAction(r1, c1, r2, c2);
+                rememberLastActionPath(path);
 
                 successfulActionCount++;
                 pendingDrawOfferTeam = null;
@@ -396,10 +410,20 @@ public class GameServer {
             int r2 = Integer.parseInt(parts[3]);
             int c2 = Integer.parseInt(parts[4]);
 
+            Piece splittingPiece = game.getBoard().getPiece(r1, c1);
+
+            List<int[]> path = MoveValidator.findMovePath(
+                    game.getBoard(),
+                    splittingPiece,
+                    r1, c1,
+                    r2, c2,
+                    true
+            );
+
             boolean success = game.split(r1, c1, r2, c2);
 
             if (success) {
-                rememberLastAction(r1, c1, r2, c2);
+                rememberLastActionPath(path);
 
                 successfulActionCount++;
                 pendingDrawOfferTeam = null;
@@ -570,10 +594,33 @@ public class GameServer {
     }
 
     private void rememberLastAction(int fromRow, int fromCol, int toRow, int toCol) {
-        lastFromRow = fromRow;
-        lastFromCol = fromCol;
-        lastToRow = toRow;
-        lastToCol = toCol;
+        List<int[]> path = new ArrayList<>();
+        path.add(new int[]{fromRow, fromCol});
+        path.add(new int[]{toRow, toCol});
+
+        rememberLastActionPath(path);
+    }
+
+    private void rememberLastActionPath(List<int[]> path) {
+
+        lastActionPath.clear();
+
+        if (path == null || path.size() < 2) {
+            clearLastAction();
+            return;
+        }
+
+        for (int[] point : path) {
+            lastActionPath.add(new int[]{point[0], point[1]});
+        }
+
+        int[] first = lastActionPath.get(0);
+        int[] last = lastActionPath.get(lastActionPath.size() - 1);
+
+        lastFromRow = first[0];
+        lastFromCol = first[1];
+        lastToRow = last[0];
+        lastToCol = last[1];
     }
 
     private void clearLastAction() {
@@ -581,6 +628,8 @@ public class GameServer {
         lastFromCol = -1;
         lastToRow = -1;
         lastToCol = -1;
+
+        lastActionPath.clear();
     }
 
     private String createLastActionLine() {
@@ -589,6 +638,30 @@ public class GameServer {
                 lastFromCol + " " +
                 lastToRow + " " +
                 lastToCol;
+    }
+
+    private String createLastActionPathLine() {
+
+        if (lastActionPath == null || lastActionPath.size() < 2) {
+            return "LAST_ACTION_PATH NONE";
+        }
+
+        StringBuilder builder = new StringBuilder("LAST_ACTION_PATH ");
+
+        for (int i = 0; i < lastActionPath.size(); i++) {
+
+            int[] point = lastActionPath.get(i);
+
+            if (i > 0) {
+                builder.append(";");
+            }
+
+            builder.append(point[0])
+                    .append(",")
+                    .append(point[1]);
+        }
+
+        return builder.toString();
     }
 
     private void sendMessageToClient(ClientHandler client, String message) {
@@ -611,7 +684,7 @@ public class GameServer {
 
         client.sendLine(createStateLine());
         client.sendLine(createLastActionLine());
-
+        client.sendLine(createLastActionPathLine());
         client.sendLine("BOARD");
 
         for (int r = 0; r < ROWS; r++) {

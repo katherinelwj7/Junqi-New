@@ -27,6 +27,12 @@ import javafx.scene.shape.Polygon;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import java.util.Optional;
+import utils.MoveValidator;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.List;
+import javafx.scene.shape.Polyline;
+import javafx.scene.shape.Polygon;
 
 import java.util.Optional;
 
@@ -136,7 +142,9 @@ public class JunqiApp extends Application {
     private int lastToCol = -1;
 
     private Pane boardPane;
-    private Line lastActionArrowLine;
+
+    private List<int[]> lastActionPath = new ArrayList<>();
+    private Polyline lastActionArrowLine;
     private Polygon lastActionArrowHead;
 
     @Override
@@ -252,10 +260,35 @@ public class JunqiApp extends Application {
     }
 
     private void rememberLastAction(int fromRow, int fromCol, int toRow, int toCol) {
-        lastFromRow = fromRow;
-        lastFromCol = fromCol;
-        lastToRow = toRow;
-        lastToCol = toCol;
+
+        List<int[]> path = new ArrayList<>();
+        path.add(new int[]{fromRow, fromCol});
+        path.add(new int[]{toRow, toCol});
+
+        rememberLastActionPath(path);
+    }
+
+    private void rememberLastActionPath(List<int[]> path) {
+
+        lastActionPath.clear();
+
+        if (path == null || path.size() < 2) {
+            clearLastActionHighlight();
+            clearLastActionArrow();
+            return;
+        }
+
+        for (int[] point: path) {
+            lastActionPath.add(new int[]{point[0], point[1]});
+        }
+
+        int[] first = lastActionPath.get(0);
+        int[] last = lastActionPath.get(lastActionPath.size() - 1);
+
+        lastFromRow = first[0];
+        lastFromCol = first[1];
+        lastToRow = last[0];
+        lastToCol = last[1];
     }
 
     private void clearLastActionHighlight() {
@@ -263,6 +296,8 @@ public class JunqiApp extends Application {
         lastFromCol = -1;
         lastToRow = -1;
         lastToCol = -1;
+
+        lastActionPath.clear();
     }
 
     private void clearLastActionArrow() {
@@ -290,47 +325,47 @@ public class JunqiApp extends Application {
             return;
         }
 
-        if (lastFromRow == -1 || lastToRow == -1) {
+        if (lastActionPath == null || lastActionPath.size() < 2) {
             return;
         }
 
-        int fromViewRow = toViewRow(lastFromRow);
-        int fromViewCol = toViewCol(lastFromCol);
-        int toViewRow = toViewRow(lastToRow);
-        int toViewCol = toViewCol(lastToCol);
+        List<double[]> viewPoints = new ArrayList<>();
 
-        double startCenterX = getCellCenterX(fromViewCol);
-        double startCenterY = getCellCenterY(fromViewRow);
-        double endCenterX = getCellCenterX(toViewCol);
-        double endCenterY = getCellCenterY(toViewRow);
+        for (int[] modelPoint : lastActionPath) {
 
-        double dx = endCenterX - startCenterX;
-        double dy = endCenterY - startCenterY;
+            int modelRow = modelPoint[0];
+            int modelCol = modelPoint[1];
 
-        double distance = Math.sqrt(dx * dx + dy * dy);
+            int viewRow = toViewRow(modelRow);
+            int viewCol = toViewCol(modelCol);
 
-        if (distance == 0) {
-            return;
+            double centerX = getCellCenterX(viewCol);
+            double centerY = getCellCenterY(viewRow);
+
+            viewPoints.add(new double[]{centerX, centerY});
         }
 
-        double unitX = dx / distance;
-        double unitY = dy / distance;
+        shortenFirstAndLastPoint(viewPoints, 18);
 
-        // Shorten the arrow a little so it does not cover the piece text too much.
-        double shortenAmount = 18;
-
-        double startX = startCenterX + unitX * shortenAmount;
-        double startY = startCenterY + unitY * shortenAmount;
-
-        double endX = endCenterX - unitX * shortenAmount;
-        double endY = endCenterY - unitY * shortenAmount;
-
-        lastActionArrowLine = new Line(startX, startY, endX, endY);
+        lastActionArrowLine = new Polyline();
         lastActionArrowLine.setStrokeWidth(4);
         lastActionArrowLine.setStyle("-fx-stroke: #E0A100;");
         lastActionArrowLine.setMouseTransparent(true);
 
-        lastActionArrowHead = createArrowHead(startX, startY, endX, endY);
+        for (double[] point : viewPoints) {
+            lastActionArrowLine.getPoints().addAll(point[0], point[1]);
+        }
+
+        double[] previous = viewPoints.get(viewPoints.size() - 2);
+        double[] end = viewPoints.get(viewPoints.size() - 1);
+
+        lastActionArrowHead = createArrowHead(
+                previous[0],
+                previous[1],
+                end[0],
+                end[1]
+        );
+
         lastActionArrowHead.setStyle("-fx-fill: #E0A100;");
         lastActionArrowHead.setMouseTransparent(true);
 
@@ -338,6 +373,39 @@ public class JunqiApp extends Application {
 
         lastActionArrowLine.toFront();
         lastActionArrowHead.toFront();
+    }
+
+    private void shortenFirstAndLastPoint(List<double[]> points, double amount) {
+
+        if (points == null || points.size() < 2) {
+            return;
+        }
+
+        double[] first = points.get(0);
+        double[] second = points.get(1);
+
+        double dxStart = second[0] - first[0];
+        double dyStart = second[1] - first[1];
+
+        double startDistance = Math.sqrt(dxStart * dxStart + dyStart * dyStart);
+
+        if (startDistance > 0) {
+            first[0] += dxStart / startDistance * amount;
+            first[1] += dyStart / startDistance * amount;
+        }
+
+        double[] last = points.get(points.size() - 1);
+        double[] previous = points.get(points.size() - 2);
+
+        double dxEnd = last[0] - previous[0];
+        double dyEnd = last[1] - previous[1];
+
+        double endDistance = Math.sqrt(dxEnd * dxEnd + dyEnd * dyEnd);
+
+        if (endDistance > 0) {
+            last[0] -= dxEnd / endDistance * amount;
+            last[1] -= dyEnd / endDistance * amount;
+        }
     }
 
     private Polygon createArrowHead(double startX, double startY, double endX, double endY) {
@@ -865,8 +933,20 @@ public class JunqiApp extends Application {
                     if (fromRow == -1 || fromCol == -1 || toRow == -1 || toCol == -1) {
                         clearLastActionHighlight();
                         clearLastActionArrow();
+                        refreshBoard();
+                    }
+                });
+            }
+
+            @Override
+            public void onLastActionPathUpdated(List<int[]> path) {
+                Platform.runLater(() -> {
+
+                    if (path == null || path.size() < 2) {
+                        clearLastActionHighlight();
+                        clearLastActionArrow();
                     } else {
-                        rememberLastAction(fromRow, fromCol, toRow, toCol);
+                        rememberLastActionPath(path);
                     }
 
                     refreshBoard();
@@ -1141,11 +1221,21 @@ public class JunqiApp extends Application {
             boolean success;
 
             if (actionMode == ActionMode.MOVE) {
+
+                Piece movingPiece = game.getBoard().getPiece(fromRow, fromCol);
+
+                List<int[]> path = MoveValidator.findMovePath(
+                        game.getBoard(),
+                        movingPiece,
+                        fromRow, fromCol,
+                        row, col
+                );
+
                 success = game.move(fromRow, fromCol, row, col);
 
                 if (success) {
                     clearErrorHighlight();
-                    rememberLastAction(fromRow, fromCol, row, col);
+                    rememberLastActionPath(path);
 
                     showMessage(getLocalGameMessageOr("Move succeeded. Current turn: " + game.getCurrentTurn()), true);
                 } else {
@@ -1155,11 +1245,22 @@ public class JunqiApp extends Application {
                 }
 
             } else {
+
+                Piece splittingPiece = game.getBoard().getPiece(fromRow, fromCol);
+
+                List<int[]> path = MoveValidator.findMovePath(
+                        game.getBoard(),
+                        splittingPiece,
+                        fromRow, fromCol,
+                        row, col,
+                        true
+                );
+
                 success = game.split(fromRow, fromCol, row, col);
 
                 if (success) {
                     clearErrorHighlight();
-                    rememberLastAction(fromRow, fromCol, row, col);
+                    rememberLastActionPath(path);
 
                     showMessage(getLocalGameMessageOr("Split succeeded. Current turn: " + game.getCurrentTurn()), true);
                 } else {

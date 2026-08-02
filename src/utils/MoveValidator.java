@@ -7,6 +7,10 @@ import board.Tile;
 import board.ConnectionType;
 import board.TileType;
 import piece.Team;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
 
 
 public class MoveValidator {
@@ -381,6 +385,135 @@ public class MoveValidator {
         }
 
         return false;
+    }
+
+    // 给UI找路径，用于画箭头
+    public static List<int[]> findMovePath(Board board, Piece piece, int r1, int c1, int r2, int c2) {
+        return findMovePath(board, piece, r1, c1, r2, c2, false);
+    }
+
+    public static List<int[]> findMovePath(Board board, Piece piece, int r1, int c1, int r2, int c2, boolean allowOccupiedCamp) {
+
+        // 默认路径：from -> to，普通移动、普通铁路直线移动用这个，因为箭头本来就是直的
+        List<int[]> simplePath = createSimplePath(r1, c1, r2, c2);
+
+        if (piece == null) {
+            return simplePath;
+        }
+
+        // 只有工兵才需要寻找拐弯铁路路径
+        if (!piece.isEngineer()) {
+            return simplePath;
+        }
+
+        // 如果这个move本身不合法，就不要找路径
+        if (!canMove(board, piece, r1, c1, r2, c2, allowOccupiedCamp)) {
+            return simplePath;
+        }
+
+        boolean[][] visited = new boolean[board.grid.length][board.grid[0].length];
+
+        List<int[]> path = new ArrayList<>();
+
+        boolean found = dfsPath(board, r1, c1, r2, c2, visited, path);
+
+        if (found && path.size() >= 2) {
+            return path;
+        }
+
+        return simplePath;
+    }
+
+    // 找默认路径（直线）
+    private static List<int[]> createSimplePath(int r1, int c1, int r2, int c2) {
+
+        List<int[]> path = new ArrayList<>();
+
+        path.add(new int[]{r1, c1});
+        path.add(new int[]{r2, c2});
+
+        return path;
+    }
+
+    // DFS 并把走过的路径存进path，UI的helper
+    private static boolean dfsPath(Board board,
+                                   int r, int c,
+                                   int targetR, int targetC,
+                                   boolean[][] visited,
+                                   List<int[]> path) {
+
+        if (visited[r][c]) {
+            return false;
+        }
+
+        visited[r][c] = true;
+        path.add(new int[]{r, c});
+
+        if (r == targetR && c == targetC) {
+            return true;
+        }
+
+        Tile current = board.getTile(r, c);
+
+        // 上
+        if (current.up == ConnectionType.RAILWAY) {
+            int nr = r - 1;
+            int nc = c;
+
+            if (tryDfsPathStep(board, nr, nc, targetR, targetC, visited, path)) {
+                return true;
+            }
+        }
+
+        // 下
+        if (current.down == ConnectionType.RAILWAY) {
+            int nr = r + 1;
+            int nc = c;
+
+            if (tryDfsPathStep(board, nr, nc, targetR, targetC, visited, path)) {
+                return true;
+            }
+        }
+
+        // 左
+        if (current.left == ConnectionType.RAILWAY) {
+            int nr = r;
+            int nc = c - 1;
+
+            if (tryDfsPathStep(board, nr, nc, targetR, targetC, visited, path)) {
+                return true;
+            }
+        }
+
+        // 右
+        if (current.right == ConnectionType.RAILWAY) {
+            int nr = r;
+            int nc = c + 1;
+
+            if (tryDfsPathStep(board, nr, nc, targetR, targetC, visited, path)) {
+                return true;
+            }
+        }
+
+        // 这条路走不通，把当前格从路径里拿掉
+        path.remove(path.size() - 1);
+
+        return false;
+    }
+
+    private static boolean tryDfsPathStep(Board board, int nr, int nc, int targetR, int targetC, boolean[][] visited, List<int[]> path) {
+
+        if (visited[nr][nc]) {
+            return false;
+        }
+
+        boolean isTarget = nr == targetR && nc == targetC;
+
+        if (!isTarget && board.getPiece(nr, nc) != null) {
+            return false;
+        }
+
+        return dfsPath(board, nr, nc, targetR, targetC, visited, path);
     }
 
     // 判断两个棋子是否可以融合

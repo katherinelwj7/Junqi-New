@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 
 public class GameClient {
 
@@ -26,6 +28,8 @@ public class GameClient {
         void onStateUpdated(GameState state, Team currentTurn, Team winner, boolean draw, boolean redReady, boolean blueReady);
 
         void onLastActionUpdated(int fromRow, int fromCol, int toRow, int toCol);
+
+        void onLastActionPathUpdated(List<int[]> path);
 
         void onMessage(String message);
 
@@ -66,14 +70,16 @@ public class GameClient {
                     handleMessageLine(line);
                 } else if (line.startsWith("STATE ")) {
                     handleStateLine(line);
-                } else if (line.equals("BOARD")) {
-                    handleBoardBlock();
-                } else if (line.startsWith("LAST_ACTION ")) {
+                }  else if (line.startsWith("LAST_ACTION ")) {
                     handleLastActionLine(line);
+                } else if (line.startsWith("LAST_ACTION_PATH ")) {
+                    handleLastActionPathLine(line);
                 } else if (line.startsWith("DRAW_OFFER")) {
                     handleDrawOfferLine(line);
                 } else if (line.startsWith("NEW_GAME_REQUEST")) {
                     handleNewGameRequestLine(line);
+                } else if (line.equals("BOARD")) {
+                    handleBoardBlock();
                 }
             }
 
@@ -92,6 +98,36 @@ public class GameClient {
         int toCol = Integer.parseInt(parts[4]);
 
         listener.onLastActionUpdated(fromRow, fromCol, toRow, toCol);
+    }
+
+    private void handleLastActionPathLine(String line) {
+
+        String rest = line.substring("LAST_ACTION_PATH ".length()).trim();
+
+        List<int[]> path = new ArrayList<>();
+
+        if (rest.equals("NONE")) {
+            listener.onLastActionPathUpdated(path);
+            return;
+        }
+
+        String[] points = rest.split(";");
+
+        for (String point : points) {
+
+            String[] parts = point.split(",");
+
+            if (parts.length != 2) {
+                continue;
+            }
+
+            int row = Integer.parseInt(parts[0]);
+            int col = Integer.parseInt(parts[1]);
+
+            path.add(new int[]{row, col});
+        }
+
+        listener.onLastActionPathUpdated(path);
     }
 
     private void handleTeamLine(String line) {
