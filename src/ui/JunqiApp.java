@@ -1666,8 +1666,19 @@ public class JunqiApp extends Application {
         // 敌方未知棋子：GameServer 仍然发送 "??"
         // UI 显示成棋子背面
         if ("??".equals(display)) {
-            return "-fx-background-color: #6F6F6F;" +
-                    "-fx-text-fill: transparent;" +
+
+            String backColor;
+
+            if (localViewer == Team.RED) {
+                backColor = "#5F7FA8";
+            } else {
+                backColor = "#C86B63";
+            }
+
+            return "-fx-background-color: linear-gradient(from 0% 0% to 100% 100%, "
+                    + backColor + ", derive(" + backColor + ", -30%));" +
+                    "-fx-text-fill: white;" +
+                    "-fx-font-size: 16px;" +
                     "-fx-font-weight: bold;";
         }
 
@@ -1675,7 +1686,8 @@ public class JunqiApp extends Application {
         if ("FL".equals(display)) {
             return "-fx-background-color: #8A6F3E;" +
                     "-fx-text-fill: #FFFDF7;" +
-                    "-fx-font-weight: bold;";
+                    "-fx-font-weight: bold;" +
+                    "-fx-font-size: 16px;";
         }
 
         Team displayTeam;
@@ -1693,13 +1705,15 @@ public class JunqiApp extends Application {
         if (displayTeam == Team.RED) {
             return "-fx-background-color: #C86B63;" +
                     "-fx-text-fill: #FFFDF7;" +
-                    "-fx-font-weight: bold;";
+                    "-fx-font-weight: bold;" +
+                    "-fx-font-size: 16px;";
         }
 
         if (displayTeam == Team.BLUE) {
             return "-fx-background-color: #5F7FA8;" +
                     "-fx-text-fill: #FFFDF7;" +
-                    "-fx-font-weight: bold;";
+                    "-fx-font-weight: bold;" +
+                    "-fx-font-size: 16px;";
         }
 
         return "-fx-text-fill: #333333;";
